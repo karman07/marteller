@@ -39,3 +39,17 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
+
+// For multipart/form-data uploads — no Content-Type header (the browser sets
+// the multipart boundary itself).
+export async function requestForm<T>(path: string, formData: FormData, method = "POST"): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${BACKEND_URL}${path}`, {
+    method,
+    body: formData,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!res.ok) throw new Error(await parseErrorBody(res));
+  return res.json() as Promise<T>;
+}

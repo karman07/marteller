@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DragEvent } from "react";
-import { Check, Copy, Mail, Phone, Plus, Trash2, User, UserPlus } from "lucide-react";
+import Link from "next/link";
+import { Check, Copy, FileCheck, KeyRound, Mail, Phone, Plus, Trash2, User, UserPlus } from "lucide-react";
 import {
   SALES_LEAD_STATUSES,
   SalesLead,
@@ -10,6 +11,7 @@ import {
   SalesTeamMember,
   createSalesLead,
   deleteSalesLead,
+  issueSalesLeadCredentials,
   listSalesLeads,
   listSalesTeam,
   promoteSalesLead,
@@ -41,9 +43,10 @@ export default function LeadsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [promoting, setPromoting] = useState(false);
-  const [promoteResult, setPromoteResult] = useState<{
+  const [issuingCredentials, setIssuingCredentials] = useState(false);
+  const [credentialsResult, setCredentialsResult] = useState<{
     email: string;
-    temporaryPassword: string | null;
+    temporaryPassword: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -153,16 +156,18 @@ export default function LeadsPage() {
     setNotes(lead.notes ?? "");
     setAssignedToUserId(lead.assignedToUserId ?? "");
     setError(null);
-    setPromoteResult(null);
+    setCredentialsResult(null);
   }
 
+  // Moves the lead to 'pending_verification' and provisions the account —
+  // no credentials come back from this; see handleIssueCredentials, only
+  // reachable once verification is approved.
   async function handlePromote() {
     if (!editingLead) return;
     setPromoting(true);
     setError(null);
     try {
       const result = await promoteSalesLead(editingLead._id, email.trim() || undefined);
-      setPromoteResult({ email: result.email, temporaryPassword: result.temporaryPassword });
       setLeads((prev) => prev.map((l) => (l._id === result.lead._id ? result.lead : l)));
       setEditingLead(result.lead);
     } catch (err) {
@@ -172,11 +177,23 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleIssueCredentials() {
+    if (!editingLead) return;
+    setIssuingCredentials(true);
+    setError(null);
+    try {
+      const result = await issueSalesLeadCredentials(editingLead._id);
+      setCredentialsResult({ email: result.email, temporaryPassword: result.temporaryPassword });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not issue credentials.");
+    } finally {
+      setIssuingCredentials(false);
+    }
+  }
+
   function copyCredentials() {
-    if (!promoteResult) return;
-    const text = `Email: ${promoteResult.email}${
-      promoteResult.temporaryPassword ? `\nTemporary password: ${promoteResult.temporaryPassword}` : ""
-    }`;
+    if (!credentialsResult) return;
+    const text = `Email: ${credentialsResult.email}\nTemporary password: ${credentialsResult.temporaryPassword}`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -337,19 +354,31 @@ export default function LeadsPage() {
           error={error}
         />
 
-        {promoteResult && (
+        {editingLead?.status === "pending_verification" && (
+          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+              <FileCheck size={13} /> Awaiting document verification
+            </p>
+            <p className="mt-1 text-xs text-ink-soft">
+              An account was created but no credentials have been issued — upload/review their verification
+              documents first. Once approved, this lead moves to Converted and credentials can be issued.
+            </p>
+            <Link
+              href={`/applicants/${editingLead.convertedUserId}`}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+            >
+              Go to verification →
+            </Link>
+          </div>
+        )}
+
+        {credentialsResult && (
           <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-              <Check size={13} /> Account created — share these with the lead
+              <Check size={13} /> Credentials issued — share these with the customer
             </p>
-            <p className="mt-1.5 text-xs text-ink">Email: {promoteResult.email}</p>
-            {promoteResult.temporaryPassword ? (
-              <p className="text-xs text-ink">Temporary password: {promoteResult.temporaryPassword}</p>
-            ) : (
-              <p className="text-xs text-ink-muted">
-                An account already existed for this email — they can sign in with their existing password.
-              </p>
-            )}
+            <p className="mt-1.5 text-xs text-ink">Email: {credentialsResult.email}</p>
+            <p className="text-xs text-ink">Temporary password: {credentialsResult.temporaryPassword}</p>
             <button
               onClick={copyCredentials}
               className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
@@ -363,9 +392,14 @@ export default function LeadsPage() {
           <Button onClick={handleEditSave} disabled={saving} className="flex-1">
             {saving ? "Saving…" : "Save changes"}
           </Button>
-          {editingLead?.status !== "converted" && (
+          {!editingLead?.convertedUserId && (
             <Button onClick={handlePromote} disabled={promoting} variant="outline" className="flex-1 gap-1.5">
-              <UserPlus size={13} /> {promoting ? "Promoting…" : "Promote to customer"}
+              <UserPlus size={13} /> {promoting ? "Starting…" : "Start verification"}
+            </Button>
+          )}
+          {editingLead?.status === "converted" && (
+            <Button onClick={handleIssueCredentials} disabled={issuingCredentials} variant="outline" className="flex-1 gap-1.5">
+              <KeyRound size={13} /> {issuingCredentials ? "Issuing…" : "Issue credentials"}
             </Button>
           )}
           <button
