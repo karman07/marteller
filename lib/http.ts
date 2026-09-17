@@ -36,8 +36,13 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   });
 
   if (!res.ok) throw new Error(await parseErrorBody(res));
+  // A 200 with an empty body happens whenever a handler returns `null`
+  // (Nest sends no body rather than the literal text "null") — treat that
+  // the same as 204, not as JSON to parse, or this throws on every route
+  // that can legitimately return null (e.g. "no config set for this user").
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 // For multipart/form-data uploads — no Content-Type header (the browser sets
@@ -51,5 +56,6 @@ export async function requestForm<T>(path: string, formData: FormData, method = 
   });
 
   if (!res.ok) throw new Error(await parseErrorBody(res));
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as T;
 }

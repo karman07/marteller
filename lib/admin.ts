@@ -120,6 +120,42 @@ export function fetchUsage(userId: string) {
   return request<UsageSummary>(`/admin/applicants/${userId}/usage`);
 }
 
+export type SmsRoute = "q" | "dlt";
+
+export type SmsCredential = {
+  _id: string;
+  userId: string;
+  apiKey: string;
+  route: SmsRoute;
+  senderId?: string;
+  configuredByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Fast2SMS config for this applicant — staff-provisioned (see the
+// backend's SmsCredential schema comment), so this is the same read/write
+// pair for both sales and admin.
+export function fetchSmsCredential(userId: string) {
+  return request<SmsCredential | null>(`/admin/applicants/${userId}/sms-credential`);
+}
+
+export function setSmsCredential(
+  userId: string,
+  payload: { apiKey: string; route?: SmsRoute; senderId?: string },
+) {
+  return request<SmsCredential>(`/admin/applicants/${userId}/sms-credential`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function removeSmsCredential(userId: string) {
+  return request<{ deleted: boolean }>(`/admin/applicants/${userId}/sms-credential`, {
+    method: "DELETE",
+  });
+}
+
 export type ActivityEvent = {
   app: "frontend" | "sales" | "admin";
   type: "page_view" | "click" | "feature_interest" | "funnel_step" | "custom";

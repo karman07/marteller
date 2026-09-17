@@ -9,10 +9,12 @@ import {
   Check,
   Clock,
   FileText,
+  KeyRound,
   Loader2,
   MessageSquare,
   MousePointerClick,
   Plus,
+  Smartphone,
   Trash2,
   Upload,
   Users,
@@ -30,12 +32,17 @@ import {
   DocumentRequestItem,
   fetchApplicant,
   fetchApplicantEvents,
+  fetchSmsCredential,
   fetchUsage,
   listDocumentRequests,
   listFormFields,
+  removeSmsCredential,
   reviewVerification,
   SalesStage,
   SALES_STAGES,
+  setSmsCredential,
+  SmsCredential,
+  SmsRoute,
   submitVerificationOnBehalf,
   updateStage,
   UsageSummary,
@@ -368,6 +375,8 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
             </div>
           </section>
 
+          <SmsCredentialPanel userId={id} />
+
           <ActivityPanel timeline={timeline} />
         </div>
 
@@ -520,6 +529,142 @@ function UsageTile({ icon: Icon, label, value }: { icon: typeof MessageSquare; l
       <p className="text-sm font-semibold text-ink">{value}</p>
       <p className="text-[11px] text-ink-muted">{label}</p>
     </div>
+  );
+}
+
+// Staff-only Fast2SMS config for this applicant's account — not something
+// the customer sets up themselves (see the backend SmsCredential schema
+// comment). Self-contained: loads/saves independently of the rest of the
+// page's state.
+function SmsCredentialPanel({ userId }: { userId: string }) {
+  const [credential, setCredential] = useState<SmsCredential | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [route, setRoute] = useState<SmsRoute>("q");
+  const [senderId, setSenderId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    fetchSmsCredential(userId)
+      .then((c) => {
+        setCredential(c);
+        setApiKey(c?.apiKey ?? "");
+        setRoute(c?.route ?? "q");
+        setSenderId(c?.senderId ?? "");
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  async function handleSave() {
+    if (!apiKey.trim()) {
+      setError("API key is required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await setSmsCredential(userId, {
+        apiKey: apiKey.trim(),
+        route,
+        senderId: senderId.trim() || undefined,
+      });
+      setCredential(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save SMS config.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemove() {
+    if (!confirm("Remove this account's SMS configuration? They won't be able to send SMS until it's set up again.")) return;
+    setRemoving(true);
+    try {
+      await removeSmsCredential(userId);
+      setCredential(null);
+      setApiKey("");
+      setSenderId("");
+      setRoute("q");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface-2 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Smartphone size={15} className="text-accent" />
+          <h2 className="text-sm font-semibold text-ink">SMS provider (Fast2SMS)</h2>
+        </div>
+        {loaded && (
+          <span
+            className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+              credential ? "bg-emerald-500/15 text-emerald-600" : "bg-cream-secondary text-ink-muted"
+            }`}
+          >
+            {credential ? "Configured" : "Not configured"}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-ink-muted">
+        Staff-configured, not self-service — set this account&apos;s Fast2SMS API key so their SMS sends go out
+        under their own provider account.
+      </p>
+      {error && <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-accent">{error}</p>}
+      {!loaded ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Fast2SMS API key"
+            className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={route}
+              onChange={(e) => setRoute(e.target.value as SmsRoute)}
+              className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+            >
+              <option value="q">Quick (no DLT template)</option>
+              <option value="dlt">DLT-registered</option>
+            </select>
+            <input
+              value={senderId}
+              onChange={(e) => setSenderId(e.target.value)}
+              placeholder="Sender ID (optional)"
+              className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleSave} disabled={saving} variant="outline" className="flex-1 gap-1.5">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+              {credential ? "Update" : "Save"}
+            </Button>
+            {credential && (
+              <button
+                onClick={handleRemove}
+                disabled={removing}
+                aria-label="Remove SMS configuration"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:border-accent hover:text-accent"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
