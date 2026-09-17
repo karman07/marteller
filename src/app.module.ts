@@ -18,6 +18,8 @@ import { WorkflowsModule } from './workflows/workflows.module';
 import { LeadsModule } from './leads/leads.module';
 import { InboxModule } from './inbox/inbox.module';
 import { SalesModule } from './sales/sales.module';
+import { AdminModule } from './admin/admin.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { DocumentRequestsModule } from './document-requests/document-requests.module';
 import { MailCoreModule } from './mail-core/mail-core.module';
 import { MailModule } from './mail/mail.module';
@@ -47,6 +49,8 @@ import { MailModule } from './mail/mail.module';
     LeadsModule,
     InboxModule,
     SalesModule,
+    AdminModule,
+    AnalyticsModule,
     DocumentRequestsModule,
     MailCoreModule,
     MailModule,

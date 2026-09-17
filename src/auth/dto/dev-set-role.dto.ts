@@ -1,6 +1,6 @@
 import { IsIn } from 'class-validator';
 
 export class DevSetRoleDto {
-  @IsIn(['customer', 'sales'])
-  role: 'customer' | 'sales';
+  @IsIn(['customer', 'sales', 'admin'])
+  role: 'customer' | 'sales' | 'admin';
 }

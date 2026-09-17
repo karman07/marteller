@@ -111,9 +111,9 @@ export class AuthService {
   }
 
   // Dev-only bootstrap: there's no production admin UI yet for granting the
-  // sales role, so this is how the first sales account gets promoted. Only
-  // ever affects the caller's own account.
-  async devSetRole(userId: string, role: 'customer' | 'sales') {
+  // sales/admin roles, so this is how the first sales/admin account gets
+  // promoted. Only ever affects the caller's own account.
+  async devSetRole(userId: string, role: 'customer' | 'sales' | 'admin') {
     if (!this.isDevBypassEnabled()) {
       throw new ForbiddenException('Dev role bypass is disabled');
     }

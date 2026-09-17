@@ -4,14 +4,14 @@ import { HydratedDocument } from 'mongoose';
 export type AccountType = 'individual' | 'business';
 export type CompanySize = '1-10' | '11-50' | '51-200' | '201-1000' | '1000+';
 export type Interest = 'whatsapp' | 'email' | 'sms' | 'otp';
-export type UserRole = 'customer' | 'sales';
+export type UserRole = 'customer' | 'sales' | 'admin';
 export type SalesStage =
   'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
 export type UserDocument = HydratedDocument<User>;
 
 export const COMPANY_SIZES: CompanySize[] = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
 export const INTERESTS: Interest[] = ['whatsapp', 'email', 'sms', 'otp'];
-export const USER_ROLES: UserRole[] = ['customer', 'sales'];
+export const USER_ROLES: UserRole[] = ['customer', 'sales', 'admin'];
 export const SALES_STAGES: SalesStage[] = [
   'new',
   'contacted',

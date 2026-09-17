@@ -29,5 +29,8 @@ import { SalesGuard } from './sales.guard';
   ],
   controllers: [SalesController, SalesLeadsController],
   providers: [SalesService, SalesLeadsService, SalesGuard],
+  // AdminModule reuses these services directly (same applicant/lead data,
+  // different guard) rather than duplicating the query/update logic.
+  exports: [SalesService, SalesLeadsService],
 })
 export class SalesModule {}
