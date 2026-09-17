@@ -25,6 +25,7 @@ import {
 } from '../sales/dto/sales-lead.dto';
 import { DocumentRequestsService } from '../document-requests/document-requests.service';
 import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
@@ -46,6 +47,7 @@ export class AdminController {
     private readonly salesService: SalesService,
     private readonly salesLeadsService: SalesLeadsService,
     private readonly documentRequestsService: DocumentRequestsService,
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   @Get('applicants')
@@ -92,6 +94,19 @@ export class AdminController {
   @Get('applicants/:userId/usage')
   getUsage(@Param('userId') userId: string) {
     return this.salesService.getUsage(userId);
+  }
+
+  @Get('applicants/:userId/events')
+  getApplicantEvents(@Param('userId') userId: string) {
+    return this.analyticsService.applicantTimeline(userId);
+  }
+
+  // Platform-wide — deliberately not exposed on SalesController, per the
+  // decision that sales reps see per-applicant activity but not aggregate
+  // platform funnel/financial data.
+  @Get('analytics/funnel')
+  getFunnel() {
+    return this.analyticsService.platformFunnel();
   }
 
   @Get('leads')

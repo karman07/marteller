@@ -24,6 +24,7 @@ import {
 } from '../verification/dto/upsert-field.dto';
 import { DocumentRequestsService } from '../document-requests/document-requests.service';
 import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
+import { AnalyticsService } from '../analytics/analytics.service';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
@@ -38,6 +39,7 @@ export class SalesController {
   constructor(
     private readonly salesService: SalesService,
     private readonly documentRequestsService: DocumentRequestsService,
+    private readonly analyticsService: AnalyticsService,
   ) {}
 
   @Get('applicants')
@@ -84,6 +86,11 @@ export class SalesController {
   @Get('applicants/:userId/usage')
   getUsage(@Param('userId') userId: string) {
     return this.salesService.getUsage(userId);
+  }
+
+  @Get('applicants/:userId/events')
+  getApplicantEvents(@Param('userId') userId: string) {
+    return this.analyticsService.applicantTimeline(userId);
   }
 
   @Get('form-fields')
