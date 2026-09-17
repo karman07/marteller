@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Container } from "./ui/Container";
 import { SectionLabel } from "./ui/Pill";
 import { Button } from "./ui/Button";
 import { Reveal } from "./Reveal";
 import { trackFunnelStep } from "@/lib/analytics";
+import { fetchPlans, Plan } from "@/lib/billing";
+import { formatINR } from "@/lib/currency";
+import { useAuth } from "@/context/AuthContext";
 
-const plans = [
+// Static fallback shown until real plans exist in the admin console (or if
+// the plans fetch fails) — keeps the marketing page from ever looking
+// broken/empty before billing is fully configured.
+const FALLBACK_PLANS = [
   {
     name: "Starter",
     description: "For teams getting started with customer communication.",
@@ -50,6 +56,14 @@ const plans = [
 
 export function PricingSection() {
   const sectionRef = useRef<HTMLElement>(null);
+  const { user, openLoginModal } = useAuth();
+  const [plans, setPlans] = useState<Plan[] | null>(null);
+
+  useEffect(() => {
+    fetchPlans()
+      .then((items) => setPlans(items.filter((p) => p.isActive)))
+      .catch(() => setPlans([]));
+  }, []);
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -69,6 +83,34 @@ export function PricingSection() {
     return () => observer.disconnect();
   }, []);
 
+  const dynamicPlans = plans && plans.length > 0;
+  const cards = dynamicPlans
+    ? plans!
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((plan, i, arr) => ({
+          key: plan._id,
+          name: plan.name,
+          description: plan.description ?? "",
+          priceLabel: `${formatINR(plan.priceMonthlyPaise)}/mo`,
+          features: plan.features,
+          cta: user ? "Go to billing" : "Get Started",
+          highlighted: i === Math.min(1, arr.length - 1),
+          href: user ? "/dashboard/billing" : undefined,
+          onClick: user ? undefined : openLoginModal,
+        }))
+    : FALLBACK_PLANS.map((plan) => ({
+        key: plan.name,
+        name: plan.name,
+        description: plan.description,
+        priceLabel: undefined as string | undefined,
+        features: plan.features,
+        cta: plan.cta,
+        highlighted: plan.highlighted,
+        href: "#pricing" as string | undefined,
+        onClick: undefined as (() => void) | undefined,
+      }));
+
   return (
     <section id="pricing" ref={sectionRef} className="bg-cream py-24 sm:py-32">
       <Container>
@@ -80,8 +122,8 @@ export function PricingSection() {
         </Reveal>
 
         <div className="mt-14 grid gap-6 lg:grid-cols-3">
-          {plans.map((plan, i) => (
-            <Reveal key={plan.name} delay={i * 100}>
+          {cards.map((plan, i) => (
+            <Reveal key={plan.key} delay={i * 100}>
               <div
                 className={`flex h-full flex-col rounded-3xl p-8 ${
                   plan.highlighted
@@ -97,6 +139,9 @@ export function PricingSection() {
                 <h3 className="text-xl font-bold tracking-tight">
                   {plan.name}
                 </h3>
+                {plan.priceLabel && (
+                  <p className="mt-1 text-2xl font-semibold tracking-tight">{plan.priceLabel}</p>
+                )}
                 <p
                   className={`mt-2.5 text-sm leading-relaxed ${
                     plan.highlighted ? "text-paper/70" : "text-ink-soft"
@@ -123,7 +168,8 @@ export function PricingSection() {
                 </ul>
 
                 <Button
-                  href="#pricing"
+                  href={plan.href}
+                  onClick={plan.onClick}
                   variant={plan.highlighted ? "cream" : "outline"}
                   className="mt-8 w-full"
                 >

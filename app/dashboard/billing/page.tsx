@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/dashboard/PageHeader";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Pagination } from "@/components/dashboard/Pagination";
 import { ApiKeysSection } from "@/components/dashboard/ApiKeysSection";
+import { SubscriptionSection } from "@/components/dashboard/SubscriptionSection";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { WalletTransaction, addBalance, fetchBalance, fetchTransactions } from "@/lib/wallet";
@@ -72,13 +73,15 @@ export default function BillingPage() {
       />
 
       <div className="px-8 py-6">
-        <div className="rounded-2xl border border-line bg-surface-2 p-6">
+        <SubscriptionSection />
+
+        <div className="mt-6 rounded-2xl border border-line bg-surface-2 p-6">
           <p className="text-xs text-ink-muted">Wallet balance</p>
           <p className="mt-1 text-3xl font-semibold text-ink">
             {balancePaise === null ? "—" : formatINR(balancePaise)}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
-            Test balance — no real payment gateway connected yet.
+            Covers messages beyond your plan&apos;s monthly allowance. Test balance — no real payment gateway connected yet.
           </p>
         </div>
 
