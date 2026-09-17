@@ -5,6 +5,7 @@ import { SalesModule } from '../sales/sales.module';
 import { DocumentRequestsModule } from '../document-requests/document-requests.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { BillingModule } from '../billing/billing.module';
+import { SmsCredentialsModule } from '../sms-credentials/sms-credentials.module';
 import { AdminController } from './admin.controller';
 import { AdminGuard } from './admin.guard';
 
@@ -16,6 +17,7 @@ import { AdminGuard } from './admin.guard';
     DocumentRequestsModule,
     AnalyticsModule,
     BillingModule,
+    SmsCredentialsModule,
   ],
   controllers: [AdminController],
   providers: [AdminGuard],

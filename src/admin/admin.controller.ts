@@ -7,6 +7,8 @@ import {
   Param,
   Patch,
   Post,
+  Put,
+  Req,
   Res,
   UploadedFiles,
   UseGuards,
@@ -14,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { join } from 'path';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
 import { SalesService } from '../sales/sales.service';
@@ -44,6 +46,8 @@ import { CreatePlanDto } from '../billing/dto/create-plan.dto';
 import { UpdatePlanDto } from '../billing/dto/update-plan.dto';
 import { UsersService } from '../users/users.service';
 import { CreateTeamMemberDto } from '../users/dto/create-team-member.dto';
+import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
+import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -68,6 +72,7 @@ export class AdminController {
     private readonly plansService: PlansService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly usersService: UsersService,
+    private readonly smsCredentialsService: SmsCredentialsService,
   ) {}
 
   @Get('applicants')
@@ -128,6 +133,27 @@ export class AdminController {
   @Get('applicants/:userId/usage')
   getUsage(@Param('userId') userId: string) {
     return this.salesService.getUsage(userId);
+  }
+
+  // Per-user Fast2SMS config — staff-provisioned, not self-service (see
+  // SmsCredential schema comment). Identical to SalesController's route.
+  @Get('applicants/:userId/sms-credential')
+  getSmsCredential(@Param('userId') userId: string) {
+    return this.smsCredentialsService.findByUserId(userId);
+  }
+
+  @Put('applicants/:userId/sms-credential')
+  setSmsCredential(
+    @Param('userId') userId: string,
+    @Body() dto: UpsertSmsCredentialDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    return this.smsCredentialsService.upsert(userId, dto, req.userId);
+  }
+
+  @Delete('applicants/:userId/sms-credential')
+  removeSmsCredential(@Param('userId') userId: string) {
+    return this.smsCredentialsService.remove(userId);
   }
 
   @Get('applicants/:userId/events')
