@@ -34,6 +34,10 @@ export class CreateSalesLeadDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  assignedToUserId?: string;
 }
 
 export class UpdateSalesLeadDto {
@@ -65,6 +69,11 @@ export class UpdateSalesLeadDto {
   @IsOptional()
   @IsIn(SALES_LEAD_STATUSES)
   status?: SalesLeadStatus;
+
+  // Empty string clears the assignment (back to the shared unassigned pool).
+  @IsOptional()
+  @IsString()
+  assignedToUserId?: string;
 }
 
 export class PromoteLeadDto {

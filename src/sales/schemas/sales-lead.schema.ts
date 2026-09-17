@@ -54,6 +54,13 @@ export class SalesLead {
   @Prop()
   convertedUserId?: string;
 
+  // The sales rep currently working this lead — a User with role 'sales'
+  // (not enforced at the schema level; the assign-to picker on both the
+  // admin and sales apps only ever offers sales-role users). Left unset
+  // means the lead sits in the shared, unassigned pool.
+  @Prop({ index: true })
+  assignedToUserId?: string;
+
   createdAt: Date;
   updatedAt: Date;
 }

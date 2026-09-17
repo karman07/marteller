@@ -30,6 +30,8 @@ import { PlansService } from '../billing/plans.service';
 import { SubscriptionsService } from '../billing/subscriptions.service';
 import { CreatePlanDto } from '../billing/dto/create-plan.dto';
 import { UpdatePlanDto } from '../billing/dto/update-plan.dto';
+import { UsersService } from '../users/users.service';
+import { CreateTeamMemberDto } from '../users/dto/create-team-member.dto';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
@@ -54,6 +56,7 @@ export class AdminController {
     private readonly analyticsService: AnalyticsService,
     private readonly plansService: PlansService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Get('applicants')
@@ -213,5 +216,19 @@ export class AdminController {
   @Get('revenue')
   revenue() {
     return this.subscriptionsService.revenueSummary();
+  }
+
+  @Get('sales-team')
+  listSalesTeam() {
+    return this.usersService.listByRole('sales');
+  }
+
+  // Provisions a real login (Firebase + Mongo, role 'sales') and hands back
+  // a temporary password the same way SalesLeadsService.promote() does for
+  // converted leads — there's no email/SMS delivery wired up, so the admin
+  // passes the credentials along themselves.
+  @Post('sales-team')
+  createSalesTeamMember(@Body() dto: CreateTeamMemberDto) {
+    return this.usersService.createTeamMember(dto.email, dto.name, 'sales');
   }
 }

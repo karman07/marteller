@@ -4,7 +4,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { randomBytes } from 'crypto';
 import { Model } from 'mongoose';
 import { SalesLead, SalesLeadDocument } from './schemas/sales-lead.schema';
 import {
@@ -14,10 +13,7 @@ import {
 } from './dto/sales-lead.dto';
 import { FirebaseService } from '../firebase/firebase.service';
 import { UsersService } from '../users/users.service';
-
-function generateTempPassword(): string {
-  return randomBytes(9).toString('base64url');
-}
+import { generateTempPassword } from '../common/generate-temp-password';
 
 @Injectable()
 export class SalesLeadsService {

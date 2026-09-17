@@ -25,6 +25,7 @@ import {
 import { DocumentRequestsService } from '../document-requests/document-requests.service';
 import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { UsersService } from '../users/users.service';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
@@ -40,7 +41,16 @@ export class SalesController {
     private readonly salesService: SalesService,
     private readonly documentRequestsService: DocumentRequestsService,
     private readonly analyticsService: AnalyticsService,
+    private readonly usersService: UsersService,
   ) {}
+
+  // The pool of sales reps a lead can be (re)assigned to — every sales rep
+  // sees the same list, which is what lets them hand leads to each other
+  // rather than only admin doing the assigning.
+  @Get('team')
+  listTeam() {
+    return this.usersService.listByRole('sales');
+  }
 
   @Get('applicants')
   listApplicants() {
