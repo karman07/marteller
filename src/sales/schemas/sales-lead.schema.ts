@@ -5,12 +5,20 @@ import { HydratedDocument } from 'mongoose';
 // in leads/schemas/lead.schema.ts (that one is a customer's own CRM data
 // about their end customers). This is Marteller's own sales pipeline for
 // turning outreach into signed-up accounts.
+// 'pending_verification' sits between the sales pipeline and a real,
+// active customer account: promote() already creates the Firebase+Mongo
+// User at this point (verification documents need a userId to attach to),
+// but the lead only reaches 'converted' — and credentials only become
+// issuable — once that user's BusinessVerification is approved. See
+// SalesLeadsService.promote()/issueCredentials() and
+// SalesService.reviewVerification().
 export type SalesLeadStatus =
   | 'new'
   | 'contacted'
   | 'qualified'
   | 'demo_scheduled'
   | 'negotiating'
+  | 'pending_verification'
   | 'converted'
   | 'lost';
 
@@ -20,6 +28,7 @@ export const SALES_LEAD_STATUSES: SalesLeadStatus[] = [
   'qualified',
   'demo_scheduled',
   'negotiating',
+  'pending_verification',
   'converted',
   'lost',
 ];

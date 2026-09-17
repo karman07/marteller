@@ -46,4 +46,11 @@ export class SalesLeadsController {
   promote(@Param('id') id: string, @Body() dto: PromoteLeadDto) {
     return this.salesLeadsService.promote(id, dto);
   }
+
+  // Only reachable once the linked user's verification is approved (the
+  // lead is 'converted' by then) — see SalesLeadsService.issueCredentials.
+  @Post(':id/credentials')
+  issueCredentials(@Param('id') id: string) {
+    return this.salesLeadsService.issueCredentials(id);
+  }
 }

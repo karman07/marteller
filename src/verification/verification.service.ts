@@ -131,16 +131,42 @@ export class VerificationService {
     return this.listFields();
   }
 
+  // `newDocuments` only needs to carry whatever was uploaded THIS call — it
+  // is merged by `type` onto whatever documents already exist for this
+  // user, so re-submitting after a rejection (or an admin/sales upload
+  // filling in the other slot) never silently drops a document that was
+  // already there. Both the customer's own self-submit
+  // (VerificationController) and the sales/admin "upload on behalf of this
+  // applicant" routes funnel through here for exactly that reason.
   async submit(
     userId: string,
-    fieldValues: Record<string, string>,
-    documents: VerificationDocument[],
+    newFieldValues: Record<string, string>,
+    newDocuments: VerificationDocument[],
   ) {
+    const existing = await this.model.findOne({ userId }).exec();
+    const fieldValues = { ...(existing?.fieldValues ?? {}), ...newFieldValues };
+
     const fields = await this.listFields();
     for (const field of fields) {
       if (field.required && !fieldValues[field.key]?.trim()) {
         throw new BadRequestException(`"${field.label}" is required`);
       }
+    }
+
+    const documentsByType = new Map(
+      (existing?.documents ?? []).map((doc) => [doc.type, doc]),
+    );
+    for (const doc of newDocuments) {
+      documentsByType.set(doc.type, doc);
+    }
+    const documents = Array.from(documentsByType.values());
+
+    const hasBusinessProof = documents.some((d) => d.type === 'businessProof');
+    const hasAddressProof = documents.some((d) => d.type === 'addressProof');
+    if (!hasBusinessProof || !hasAddressProof) {
+      throw new BadRequestException(
+        'Both a business proof and an address proof document are required before submitting for verification.',
+      );
     }
 
     return this.model

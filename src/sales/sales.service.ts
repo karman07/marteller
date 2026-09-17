@@ -9,6 +9,8 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { SalesStage } from '../users/schemas/user.schema';
 import { ReviewApplicationDto } from './dto/review-application.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { SalesLeadsService } from './sales-leads.service';
+import { VerificationDocument } from '../verification/schemas/business-verification.schema';
 import {
   CreateFieldDto,
   UpdateFieldDto,
@@ -21,6 +23,7 @@ export class SalesService {
     private readonly verificationService: VerificationService,
     private readonly walletService: WalletService,
     private readonly leadsService: LeadsService,
+    private readonly salesLeadsService: SalesLeadsService,
     // Direct model access, same reasoning as elsewhere in this codebase —
     // reading a usage summary doesn't need the full MessagesModule
     // (wallet/verification/provider wiring it pulls in for sending).
@@ -161,7 +164,37 @@ export class SalesService {
   }
 
   async reviewVerification(userId: string, dto: ReviewApplicationDto) {
-    return this.verificationService.review(userId, dto.status, dto.reviewNote);
+    const record = await this.verificationService.review(
+      userId,
+      dto.status,
+      dto.reviewNote,
+    );
+
+    // A sales-lead-originated user sits in 'pending_verification' until
+    // this exact moment — approving verification is what actually makes
+    // them a customer (see SalesLeadsService.promote()'s comment). Only
+    // touches leads that are actually in that state, so self-signups
+    // (no matching lead) and already-converted users are unaffected.
+    if (dto.status === 'verified') {
+      await this.salesLeadsService.markConvertedIfPendingVerification(userId);
+    }
+
+    return record;
+  }
+
+  // Lets sales/admin upload verification documents (and optionally field
+  // values) for an applicant who can't self-serve yet — most commonly a
+  // freshly-promoted sales lead still sitting in 'pending_verification',
+  // but works for any applicant. Goes through the exact same
+  // VerificationService.submit() the applicant's own self-upload uses, so
+  // both paths land in the same record and admin/sales see them uniformly
+  // regardless of who uploaded.
+  submitVerificationOnBehalf(
+    userId: string,
+    fieldValues: Record<string, string>,
+    documents: VerificationDocument[],
+  ) {
+    return this.verificationService.submit(userId, fieldValues, documents);
   }
 
   async updateStage(userId: string, dto: UpdateStageDto) {

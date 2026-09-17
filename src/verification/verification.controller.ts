@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -14,23 +13,21 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { randomUUID } from 'crypto';
-import { extname, join } from 'path';
+import { join } from 'path';
 import { Request } from 'express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { VerificationService } from './verification.service';
 import { SubmitVerificationDto } from './dto/submit-verification.dto';
 import { DevReviewDto } from './dto/dev-review.dto';
-import { VerificationDocument } from './schemas/business-verification.schema';
-
-const UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
-
-type UploadedFileFields = {
-  businessProof?: Express.Multer.File[];
-  addressProof?: Express.Multer.File[];
-};
+import {
+  VERIFICATION_FILE_FIELDS,
+  VERIFICATION_MULTER_OPTIONS,
+  VERIFICATION_UPLOAD_DIR,
+  buildVerificationDocuments,
+  parseFieldValuesJson,
+} from './verification-upload.util';
+import type { UploadedVerificationFiles } from './verification-upload.util';
 
 @UseGuards(JwtAuthGuard)
 @Controller('verification')
@@ -48,49 +45,14 @@ export class VerificationController {
   }
 
   @Post('submit')
-  @UseInterceptors(
-    FileFieldsInterceptor(
-      [
-        { name: 'businessProof', maxCount: 1 },
-        { name: 'addressProof', maxCount: 1 },
-      ],
-      {
-        storage: diskStorage({
-          destination: UPLOAD_DIR,
-          filename: (_req, file, cb) => {
-            cb(null, `${randomUUID()}${extname(file.originalname)}`);
-          },
-        }),
-        limits: { fileSize: 10 * 1024 * 1024 },
-      },
-    ),
-  )
+  @UseInterceptors(FileFieldsInterceptor(VERIFICATION_FILE_FIELDS, VERIFICATION_MULTER_OPTIONS))
   submit(
     @Req() req: Request & { userId: string },
     @Body() dto: SubmitVerificationDto,
-    @UploadedFiles() files: UploadedFileFields,
+    @UploadedFiles() files: UploadedVerificationFiles,
   ) {
-    const documents: VerificationDocument[] = [];
-    for (const [type, list] of Object.entries(files ?? {})) {
-      const file = list?.[0];
-      if (!file) continue;
-      documents.push({
-        type,
-        fileName: file.originalname,
-        storedFileName: file.filename,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        uploadedAt: new Date(),
-      });
-    }
-
-    let fieldValues: Record<string, string>;
-    try {
-      fieldValues = JSON.parse(dto.fieldValuesJson) as Record<string, string>;
-    } catch {
-      throw new BadRequestException('fieldValuesJson must be valid JSON');
-    }
-
+    const documents = buildVerificationDocuments(files);
+    const fieldValues = parseFieldValuesJson(dto.fieldValuesJson);
     return this.verificationService.submit(req.userId, fieldValues, documents);
   }
 
@@ -106,7 +68,7 @@ export class VerificationController {
     @Res() res: Response,
   ) {
     const doc = await this.verificationService.findDocument(req.userId, storedFileName);
-    const filePath = join(UPLOAD_DIR, doc.storedFileName);
+    const filePath = join(VERIFICATION_UPLOAD_DIR, doc.storedFileName);
     return res.sendFile(filePath, (err) => {
       if (err) throw new NotFoundException('Document not found');
     });

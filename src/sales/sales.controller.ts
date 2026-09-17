@@ -8,8 +8,11 @@ import {
   Patch,
   Post,
   Res,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { join } from 'path';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -22,12 +25,20 @@ import {
   ReorderFieldsDto,
   UpdateFieldDto,
 } from '../verification/dto/upsert-field.dto';
+import { SubmitVerificationDto } from '../verification/dto/submit-verification.dto';
+import {
+  VERIFICATION_FILE_FIELDS,
+  VERIFICATION_MULTER_OPTIONS,
+  VERIFICATION_UPLOAD_DIR,
+  buildVerificationDocuments,
+  parseFieldValuesJson,
+} from '../verification/verification-upload.util';
+import type { UploadedVerificationFiles } from '../verification/verification-upload.util';
 import { DocumentRequestsService } from '../document-requests/document-requests.service';
 import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { UsersService } from '../users/users.service';
 
-const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
   'uploads',
@@ -73,6 +84,22 @@ export class SalesController {
     @Body() dto: ReviewApplicationDto,
   ) {
     return this.salesService.reviewVerification(userId, dto);
+  }
+
+  // Sales uploading verification documents on an applicant's behalf —
+  // e.g. a customer sent proof over WhatsApp/email and sales enters it
+  // into the system directly, most commonly right after promoting a lead
+  // (see SalesLeadsService.promote()'s 'pending_verification' status).
+  @Post('applicants/:userId/verification/documents')
+  @UseInterceptors(FileFieldsInterceptor(VERIFICATION_FILE_FIELDS, VERIFICATION_MULTER_OPTIONS))
+  submitVerificationOnBehalf(
+    @Param('userId') userId: string,
+    @Body() dto: SubmitVerificationDto,
+    @UploadedFiles() files: UploadedVerificationFiles,
+  ) {
+    const documents = buildVerificationDocuments(files);
+    const fieldValues = parseFieldValuesJson(dto.fieldValuesJson);
+    return this.salesService.submitVerificationOnBehalf(userId, fieldValues, documents);
   }
 
   @Patch('applicants/:userId/stage')

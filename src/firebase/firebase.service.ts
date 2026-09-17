@@ -47,4 +47,12 @@ export class FirebaseService implements OnModuleInit {
   deleteUser(uid: string) {
     return getAuth(this.app).deleteUser(uid);
   }
+
+  // Used to issue a fresh, shareable password once — e.g. when
+  // SalesLeadsService.issueCredentials() hands real login credentials to a
+  // newly-verified customer. Overwrites whatever password was set at
+  // account-creation time (never shared with anyone).
+  updatePassword(uid: string, password: string) {
+    return getAuth(this.app).updateUser(uid, { password });
+  }
 }
