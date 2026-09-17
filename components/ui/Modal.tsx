@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 const SIZES = {
   sm: "max-w-sm",
   lg: "max-w-2xl",
+  xl: "max-w-4xl",
 };
 
 export function Modal({

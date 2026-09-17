@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, Copy, Globe, Plus, RefreshCw, Star, Trash2, XCircle } from "lucide-react";
+import { Check, CheckCircle2, Clock, Copy, Globe, Plus, RefreshCw, Star, Trash2, XCircle } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -127,6 +127,7 @@ export default function EmailDomainsPage() {
   function handleCopy(value: string, key: string) {
     navigator.clipboard.writeText(value);
     setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey((cur) => (cur === key ? null : cur)), 2000);
   }
 
   const dnsRows: { key: string; label: string; record: DnsRecord }[] = dnsRecords
@@ -265,7 +266,7 @@ export default function EmailDomainsPage() {
           setDnsRecords(null);
         }}
         title={dnsDomain ? `DNS records for ${dnsDomain.domain}` : undefined}
-        size="lg"
+        size="xl"
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-ink-soft">
@@ -274,53 +275,36 @@ export default function EmailDomainsPage() {
           {!dnsRecords ? (
             <p className="text-sm text-ink-muted">Loading…</p>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-line">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-line text-xs text-ink-muted">
-                      <th className="px-3 py-2 font-medium">Record</th>
-                      <th className="px-3 py-2 font-medium">Type</th>
-                      <th className="px-3 py-2 font-medium">Host</th>
-                      <th className="px-3 py-2 font-medium">Value</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dnsRows.map(({ key, label, record }) => (
-                      <tr key={key} className="border-b border-line/60 align-top last:border-0">
-                        <td className="px-3 py-2.5 font-medium text-ink">{label}</td>
-                        <td className="px-3 py-2.5 text-ink-soft">{record.type}</td>
-                        <td
-                          className="max-w-[9rem] truncate px-3 py-2.5 font-mono text-xs text-ink-soft"
-                          title={record.host}
-                        >
-                          {record.host}
-                        </td>
-                        <td
-                          className="max-w-[13rem] truncate px-3 py-2.5 font-mono text-xs text-ink"
-                          title={record.value}
-                        >
-                          {record.value}
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <button
-                            onClick={() => handleCopy(record.value, key)}
-                            className="text-ink-muted hover:text-accent"
-                            aria-label={`Copy ${label} value`}
-                          >
-                            <Copy size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div className="flex flex-col gap-3">
+              {dnsRows.map(({ key, label, record }) => (
+                <div key={key} className="rounded-xl border border-line bg-cream/60 p-4">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="text-sm font-medium text-ink">{label}</span>
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-muted">
+                      {record.type}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <CopyableField
+                      fieldKey={`${key}-host`}
+                      label="Host"
+                      value={record.host}
+                      copied={copiedKey === `${key}-host`}
+                      onCopy={handleCopy}
+                    />
+                    <CopyableField
+                      fieldKey={`${key}-value`}
+                      label="Value"
+                      value={record.value}
+                      copied={copiedKey === `${key}-value`}
+                      onCopy={handleCopy}
+                    />
+                  </div>
+                  {record.note && <p className="mt-2 text-xs text-ink-muted">{record.note}</p>}
+                </div>
+              ))}
             </div>
           )}
-          {dnsRecords?.spf.note && <p className="text-xs text-ink-muted">{dnsRecords.spf.note}</p>}
-          {copiedKey && <p className="text-xs text-[#0ca30c]">Copied to clipboard.</p>}
         </div>
       </Modal>
 
@@ -332,5 +316,46 @@ export default function EmailDomainsPage() {
         description={`"${deletingDomain?.domain}" will stop working as a sending domain. This can't be undone.`}
       />
     </>
+  );
+}
+
+// A label + full, unclipped value with its own copy button — used for the
+// Host/Value rows in the DNS records modal, where values (DKIM public keys
+// especially) can run to 200+ characters and must stay fully readable and
+// selectable rather than being truncated behind a hover tooltip.
+function CopyableField({
+  fieldKey,
+  label,
+  value,
+  copied,
+  onCopy,
+}: {
+  fieldKey: string;
+  label: string;
+  value: string;
+  copied: boolean;
+  onCopy: (value: string, key: string) => void;
+}) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[11px] uppercase tracking-wide text-ink-muted">{label}</span>
+        <span className="select-all break-all font-mono text-xs text-ink">{value}</span>
+      </div>
+      <button
+        onClick={() => onCopy(value, fieldKey)}
+        className="mt-3.5 flex shrink-0 items-center gap-1 text-ink-muted hover:text-accent"
+        aria-label={`Copy ${label.toLowerCase()}`}
+      >
+        {copied ? (
+          <>
+            <Check size={13} className="text-[#0ca30c]" />
+            <span className="text-[11px] text-[#0ca30c]">Copied</span>
+          </>
+        ) : (
+          <Copy size={13} />
+        )}
+      </button>
+    </div>
   );
 }
