@@ -206,9 +206,28 @@ export type SalesLead = {
   notes?: string;
   status: SalesLeadStatus;
   convertedUserId?: string;
+  assignedToUserId?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+export type SalesTeamMember = {
+  _id: string;
+  name?: string;
+  email: string | null;
+  createdAt: string;
+};
+
+export function listSalesTeam() {
+  return request<SalesTeamMember[]>("/admin/sales-team");
+}
+
+export function createSalesTeamMember(email: string, name: string) {
+  return request<{ user: SalesTeamMember; temporaryPassword: string | null }>("/admin/sales-team", {
+    method: "POST",
+    body: JSON.stringify({ email, name }),
+  });
+}
 
 export function listSalesLeads() {
   return request<SalesLead[]>("/admin/leads");
@@ -221,6 +240,7 @@ export function createSalesLead(payload: {
   phone?: string;
   source?: string;
   notes?: string;
+  assignedToUserId?: string;
 }) {
   return request<SalesLead>("/admin/leads", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -235,6 +255,7 @@ export function updateSalesLead(
     source: string;
     notes: string;
     status: SalesLeadStatus;
+    assignedToUserId: string;
   }>,
 ) {
   return request<SalesLead>(`/admin/leads/${id}`, { method: "PATCH", body: JSON.stringify(payload) });

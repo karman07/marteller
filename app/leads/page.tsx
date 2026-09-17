@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DragEvent } from "react";
-import { Check, Copy, Mail, Phone, Plus, Trash2, UserPlus } from "lucide-react";
+import { Check, Copy, Mail, Phone, Plus, Trash2, User, UserPlus } from "lucide-react";
 import {
   SALES_LEAD_STATUSES,
   SalesLead,
   SalesLeadStatus,
+  SalesTeamMember,
   createSalesLead,
   deleteSalesLead,
   listSalesLeads,
+  listSalesTeam,
   promoteSalesLead,
   updateSalesLead,
 } from "@/lib/admin";
@@ -22,6 +24,7 @@ function formatDate(iso: string) {
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<SalesLead[]>([]);
+  const [team, setTeam] = useState<SalesTeamMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<SalesLead | null>(null);
@@ -33,6 +36,7 @@ export default function LeadsPage() {
   const [phone, setPhone] = useState("");
   const [source, setSource] = useState("");
   const [notes, setNotes] = useState("");
+  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +58,12 @@ export default function LeadsPage() {
 
   useEffect(() => {
     load();
+    listSalesTeam()
+      .then(setTeam)
+      .catch(() => {});
   }, []);
+
+  const teamById = useMemo(() => new Map(team.map((m) => [m._id, m])), [team]);
 
   const byStatus = useMemo(() => {
     const map = new Map<SalesLeadStatus, SalesLead[]>();
@@ -70,6 +79,7 @@ export default function LeadsPage() {
     setPhone("");
     setSource("");
     setNotes("");
+    setAssignedToUserId("");
     setError(null);
   }
 
@@ -88,6 +98,7 @@ export default function LeadsPage() {
         phone: phone.trim() || undefined,
         source: source.trim() || undefined,
         notes: notes.trim() || undefined,
+        assignedToUserId: assignedToUserId || undefined,
       });
       setLeads((prev) => [lead, ...prev]);
       setCreateOpen(false);
@@ -115,6 +126,7 @@ export default function LeadsPage() {
         phone: phone.trim() || undefined,
         source: source.trim() || undefined,
         notes: notes.trim() || undefined,
+        assignedToUserId,
       });
       setLeads((prev) => prev.map((l) => (l._id === updated._id ? updated : l)));
       setEditingLead(updated);
@@ -139,6 +151,7 @@ export default function LeadsPage() {
     setPhone(lead.phone ?? "");
     setSource(lead.source ?? "");
     setNotes(lead.notes ?? "");
+    setAssignedToUserId(lead.assignedToUserId ?? "");
     setError(null);
     setPromoteResult(null);
   }
@@ -259,7 +272,17 @@ export default function LeadsPage() {
                             <Mail size={11} /> {lead.email}
                           </p>
                         )}
-                        <p className="mt-2 text-[11px] text-ink-muted">{formatDate(lead.createdAt)}</p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="text-[11px] text-ink-muted">{formatDate(lead.createdAt)}</p>
+                          {lead.assignedToUserId && (
+                            <span className="flex items-center gap-1 truncate rounded-full bg-cream-secondary px-2 py-0.5 text-[10px] font-medium text-ink-muted">
+                              <User size={9} />
+                              {teamById.get(lead.assignedToUserId)?.name ??
+                                teamById.get(lead.assignedToUserId)?.email ??
+                                "Unknown"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -284,6 +307,9 @@ export default function LeadsPage() {
           setSource={setSource}
           notes={notes}
           setNotes={setNotes}
+          team={team}
+          assignedToUserId={assignedToUserId}
+          setAssignedToUserId={setAssignedToUserId}
           error={error}
         />
         <Button onClick={handleCreate} disabled={saving} className="mt-4 w-full">
@@ -305,6 +331,9 @@ export default function LeadsPage() {
           setSource={setSource}
           notes={notes}
           setNotes={setNotes}
+          team={team}
+          assignedToUserId={assignedToUserId}
+          setAssignedToUserId={setAssignedToUserId}
           error={error}
         />
 
@@ -365,6 +394,9 @@ function LeadForm({
   setSource,
   notes,
   setNotes,
+  team,
+  assignedToUserId,
+  setAssignedToUserId,
   error,
 }: {
   name: string;
@@ -379,6 +411,9 @@ function LeadForm({
   setSource: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
+  team: SalesTeamMember[];
+  assignedToUserId: string;
+  setAssignedToUserId: (v: string) => void;
   error: string | null;
 }) {
   return (
@@ -423,6 +458,18 @@ function LeadForm({
         rows={3}
         className="w-full rounded-xl border border-line bg-cream px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
       />
+      <select
+        value={assignedToUserId}
+        onChange={(e) => setAssignedToUserId(e.target.value)}
+        className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+      >
+        <option value="">Unassigned</option>
+        {team.map((m) => (
+          <option key={m._id} value={m._id}>
+            {m.name ?? m.email}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
