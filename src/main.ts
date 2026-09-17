@@ -18,6 +18,7 @@ async function bootstrap() {
     origin: [
       process.env.FRONTEND_URL ?? 'http://localhost:3000',
       process.env.SALES_URL ?? 'http://localhost:3002',
+      process.env.ADMIN_URL ?? 'http://localhost:3001',
     ],
     credentials: true,
   });
