@@ -2,14 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { FlaskConical, ShieldCheck, TrendingUp, Users } from "lucide-react";
-import { AdminStats, fetchStats, SALES_STAGES, VERIFICATION_STATUSES } from "@/lib/admin";
+import {
+  AdminStats,
+  fetchFunnel,
+  fetchStats,
+  FunnelStep,
+  SALES_STAGES,
+  VERIFICATION_STATUSES,
+} from "@/lib/admin";
+
+const FUNNEL_LABELS: Record<string, string> = {
+  page_view: "Site visits",
+  pricing_view: "Viewed pricing",
+  signup_started: "Started signup",
+  signup_completed: "Completed signup",
+  verification_submitted: "Submitted verification",
+  checkout_started: "Started checkout",
+  checkout_completed: "Completed checkout",
+};
 
 export default function OverviewPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [funnel, setFunnel] = useState<FunnelStep[] | null>(null);
 
   useEffect(() => {
     fetchStats()
       .then(setStats)
+      .catch(() => {});
+    fetchFunnel()
+      .then(setFunnel)
       .catch(() => {});
   }, []);
 
@@ -74,6 +95,40 @@ export default function OverviewPage() {
                 </div>
               </section>
             </div>
+
+            {funnel && funnel.length > 0 && (
+              <section className="rounded-2xl border border-line bg-surface-2 p-4">
+                <h2 className="mb-3 text-sm font-semibold text-ink">Platform funnel</h2>
+                <p className="mb-4 text-xs text-ink-muted">
+                  Distinct visitors reaching each step, from site visits through paid conversion.
+                </p>
+                <div className="flex flex-col gap-3">
+                  {funnel.map((step, i) => {
+                    const max = funnel[0]?.count || 1;
+                    const pct = Math.round((step.count / max) * 100);
+                    const dropoff = i > 0 && funnel[i - 1].count > 0
+                      ? Math.round((1 - step.count / funnel[i - 1].count) * 100)
+                      : null;
+                    return (
+                      <div key={step.name}>
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <span className="text-ink-soft">{FUNNEL_LABELS[step.name] ?? step.name}</span>
+                          <span className="text-ink-muted">
+                            {step.count}
+                            {dropoff !== null && dropoff > 0 && (
+                              <span className="ml-1.5 text-[#d03b3b]">-{dropoff}%</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-cream-secondary">
+                          <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@
 import { Fragment, use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Check,
@@ -10,6 +11,7 @@ import {
   FileText,
   Loader2,
   MessageSquare,
+  MousePointerClick,
   Plus,
   Trash2,
   Users,
@@ -17,13 +19,16 @@ import {
   X,
 } from "lucide-react";
 import {
+  ActivityEvent,
   ApplicantDetail,
+  ApplicantTimeline,
   cancelDocumentRequest,
   createDocumentRequest,
   documentRequestFileUrl,
   documentUrl,
   DocumentRequestItem,
   fetchApplicant,
+  fetchApplicantEvents,
   fetchUsage,
   listDocumentRequests,
   listFormFields,
@@ -54,6 +59,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   const [detail, setDetail] = useState<ApplicantDetail | null>(null);
   const [fields, setFields] = useState<VerificationFormField[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
+  const [timeline, setTimeline] = useState<ApplicantTimeline | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
@@ -83,6 +89,9 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
       .catch(() => {});
     listDocumentRequests(id)
       .then(setDocRequests)
+      .catch(() => {});
+    fetchApplicantEvents(id)
+      .then(setTimeline)
       .catch(() => {});
   }
 
@@ -331,6 +340,8 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
               </Button>
             </div>
           </section>
+
+          <ActivityPanel timeline={timeline} />
         </div>
 
         <section className="rounded-2xl border border-line bg-surface-2 p-4">
@@ -429,5 +440,74 @@ function UsageTile({ icon: Icon, label, value }: { icon: typeof MessageSquare; l
       <p className="text-sm font-semibold text-ink">{value}</p>
       <p className="text-[11px] text-ink-muted">{label}</p>
     </div>
+  );
+}
+
+const FUNNEL_LABELS: Record<keyof ApplicantTimeline["funnel"], string> = {
+  viewedPricing: "Viewed pricing",
+  startedSignup: "Started signup",
+  completedSignup: "Completed signup",
+  submittedVerification: "Submitted verification",
+  startedCheckout: "Started checkout",
+  completedCheckout: "Completed checkout",
+};
+
+function EVENT_LABEL(e: ActivityEvent) {
+  if (e.type === "page_view") return `Viewed ${e.path ?? "a page"}`;
+  return e.name.replace(/_/g, " ").replace(/^feature click:/i, "Clicked ");
+}
+
+function timeAgo(iso: string) {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function ActivityPanel({ timeline }: { timeline: ApplicantTimeline | null }) {
+  return (
+    <section className="rounded-2xl border border-line bg-surface-2 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Activity size={15} className="text-accent" />
+        <h2 className="text-sm font-semibold text-ink">Activity</h2>
+      </div>
+      {!timeline ? (
+        <p className="text-sm text-ink-muted">Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.keys(FUNNEL_LABELS) as (keyof ApplicantTimeline["funnel"])[]).map((key) => (
+              <span
+                key={key}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                  timeline.funnel[key]
+                    ? "bg-emerald-500/15 text-emerald-600"
+                    : "bg-cream-secondary text-ink-muted"
+                }`}
+              >
+                {FUNNEL_LABELS[key]}
+              </span>
+            ))}
+          </div>
+
+          {timeline.events.length === 0 ? (
+            <p className="text-xs text-ink-muted">No tracked activity yet.</p>
+          ) : (
+            <div className="flex max-h-64 flex-col gap-1.5 overflow-y-auto border-t border-line pt-3">
+              {timeline.events.map((e, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <MousePointerClick size={11} className="shrink-0 text-ink-muted" />
+                  <span className="min-w-0 flex-1 truncate text-ink-soft">{EVENT_LABEL(e)}</span>
+                  <span className="shrink-0 text-ink-muted">{timeAgo(e.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
