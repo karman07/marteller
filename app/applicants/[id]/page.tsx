@@ -14,6 +14,7 @@ import {
   MousePointerClick,
   Plus,
   Trash2,
+  Upload,
   Users,
   Wallet,
   X,
@@ -35,6 +36,7 @@ import {
   reviewVerification,
   SalesStage,
   SALES_STAGES,
+  submitVerificationOnBehalf,
   updateStage,
   UsageSummary,
   VerificationFormField,
@@ -73,12 +75,19 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   const [newDocNote, setNewDocNote] = useState("");
   const [requestingDoc, setRequestingDoc] = useState(false);
 
+  const [onBehalfValues, setOnBehalfValues] = useState<Record<string, string>>({});
+  const [businessProofFile, setBusinessProofFile] = useState<File | null>(null);
+  const [addressProofFile, setAddressProofFile] = useState<File | null>(null);
+  const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
+  const [onBehalfError, setOnBehalfError] = useState<string | null>(null);
+
   function load() {
     fetchApplicant(id)
       .then((d) => {
         setDetail(d);
         setStage(d.user.salesStage);
         setNotes(d.user.salesNotes ?? "");
+        setOnBehalfValues((prev) => ({ ...d.verification.fieldValues, ...prev }));
       })
       .catch(() => {});
     listFormFields()
@@ -111,6 +120,24 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
       setReviewError(err instanceof Error ? err.message : "Could not save review.");
     } finally {
       setReviewing(false);
+    }
+  }
+
+  async function handleSubmitOnBehalf() {
+    setSubmittingOnBehalf(true);
+    setOnBehalfError(null);
+    try {
+      await submitVerificationOnBehalf(id, onBehalfValues, {
+        businessProof: businessProofFile ?? undefined,
+        addressProof: addressProofFile ?? undefined,
+      });
+      setBusinessProofFile(null);
+      setAddressProofFile(null);
+      load();
+    } catch (err) {
+      setOnBehalfError(err instanceof Error ? err.message : "Could not submit documents.");
+    } finally {
+      setSubmittingOnBehalf(false);
     }
   }
 
@@ -349,6 +376,59 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
             <h2 className="text-sm font-semibold text-ink">Business verification</h2>
             <VerificationBadge status={verification.status} />
           </div>
+
+          {verification.status !== "verified" && (
+            <div className="mb-4 rounded-xl border border-line bg-cream p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
+                <Upload size={12} /> Upload on their behalf
+              </p>
+              <p className="mb-3 text-xs text-ink-muted">
+                They sent proof another way (WhatsApp, email, call)? Enter it here — it lands in the same
+                verification record as their own upload.
+              </p>
+              {onBehalfError && (
+                <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-accent">{onBehalfError}</p>
+              )}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {fields.map((f) => (
+                  <input
+                    key={f.key}
+                    value={onBehalfValues[f.key] ?? ""}
+                    onChange={(e) => setOnBehalfValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                    placeholder={f.label}
+                    className="h-10 w-full rounded-lg border border-line bg-surface-2 px-2.5 text-sm text-ink outline-none focus:border-accent"
+                  />
+                ))}
+              </div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <label className="flex h-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-line bg-surface-2 px-2.5 text-xs text-ink-muted hover:border-accent">
+                  {businessProofFile ? businessProofFile.name : "Business proof file"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => setBusinessProofFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <label className="flex h-10 cursor-pointer items-center justify-center rounded-lg border border-dashed border-line bg-surface-2 px-2.5 text-xs text-ink-muted hover:border-accent">
+                  {addressProofFile ? addressProofFile.name : "Address proof file"}
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => setAddressProofFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+              <Button
+                onClick={handleSubmitOnBehalf}
+                disabled={submittingOnBehalf}
+                variant="outline"
+                className="mt-3 w-full gap-1.5"
+              >
+                {submittingOnBehalf ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                Submit for review
+              </Button>
+            </div>
+          )}
 
           {verification.status === "not_submitted" ? (
             <p className="text-sm text-ink-muted">This applicant hasn&apos;t submitted verification yet.</p>

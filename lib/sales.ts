@@ -1,4 +1,4 @@
-import { BACKEND_URL, request } from "./http";
+import { BACKEND_URL, request, requestForm } from "./http";
 
 export type VerificationStatus = "not_submitted" | "pending" | "verified" | "rejected";
 export type SalesStage = "new" | "contacted" | "qualified" | "converted" | "lost";
@@ -163,6 +163,22 @@ export function reviewVerification(
   });
 }
 
+// Uploads verification documents (and field values) on this applicant's
+// behalf — e.g. they sent proof over WhatsApp/email and sales enters it
+// directly. Goes into the same record their own self-upload would, so it
+// shows up identically to admin/sales either way.
+export function submitVerificationOnBehalf(
+  userId: string,
+  fieldValues: Record<string, string>,
+  files: { businessProof?: File; addressProof?: File },
+) {
+  const formData = new FormData();
+  formData.append("fieldValuesJson", JSON.stringify(fieldValues));
+  if (files.businessProof) formData.append("businessProof", files.businessProof);
+  if (files.addressProof) formData.append("addressProof", files.addressProof);
+  return requestForm<VerificationRecord>(`/sales/applicants/${userId}/verification/documents`, formData);
+}
+
 export function updateStage(userId: string, salesStage: SalesStage, salesNotes?: string) {
   return request<ApplicantDetail["user"]>(`/sales/applicants/${userId}/stage`, {
     method: "PATCH",
@@ -225,6 +241,7 @@ export type SalesLeadStatus =
   | "qualified"
   | "demo_scheduled"
   | "negotiating"
+  | "pending_verification"
   | "converted"
   | "lost";
 
@@ -234,6 +251,7 @@ export const SALES_LEAD_STATUSES: { value: SalesLeadStatus; label: string }[] = 
   { value: "qualified", label: "Qualified" },
   { value: "demo_scheduled", label: "Demo scheduled" },
   { value: "negotiating", label: "Negotiating" },
+  { value: "pending_verification", label: "Pending verification" },
   { value: "converted", label: "Converted" },
   { value: "lost", label: "Lost" },
 ];
@@ -301,10 +319,22 @@ export function deleteSalesLead(id: string) {
   return request<{ deleted: boolean }>(`/sales/leads/${id}`, { method: "DELETE" });
 }
 
+// Moves a lead to 'pending_verification' and provisions the underlying
+// account — does NOT hand out usable credentials yet. See
+// issueSalesLeadCredentials(), only callable once verification is approved.
 export function promoteSalesLead(id: string, email?: string) {
-  return request<{ lead: SalesLead; email: string; temporaryPassword: string | null; userId: string }>(
+  return request<{ lead: SalesLead; email: string; userId: string }>(
     `/sales/leads/${id}/promote`,
     { method: "POST", body: JSON.stringify({ email }) },
+  );
+}
+
+// Only succeeds once the lead has reached 'converted' (verification
+// approved) — see the backend's SalesLeadsService.issueCredentials.
+export function issueSalesLeadCredentials(id: string) {
+  return request<{ email: string; temporaryPassword: string; userId: string }>(
+    `/sales/leads/${id}/credentials`,
+    { method: "POST" },
   );
 }
 
