@@ -23,8 +23,15 @@ import {
   PromoteLeadDto,
   UpdateSalesLeadDto,
 } from '../sales/dto/sales-lead.dto';
+import { DocumentRequestsService } from '../document-requests/document-requests.service';
+import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
+const DOCUMENT_REQUEST_UPLOAD_DIR = join(
+  process.cwd(),
+  'uploads',
+  'document-requests',
+);
 
 // Deliberately a separate controller/route namespace from SalesController
 // (not the same routes reused under an OR-capable guard) so the "admin"
@@ -38,6 +45,7 @@ export class AdminController {
   constructor(
     private readonly salesService: SalesService,
     private readonly salesLeadsService: SalesLeadsService,
+    private readonly documentRequestsService: DocumentRequestsService,
   ) {}
 
   @Get('applicants')
@@ -109,5 +117,50 @@ export class AdminController {
   @Post('leads/:id/promote')
   promoteLead(@Param('id') id: string, @Body() dto: PromoteLeadDto) {
     return this.salesLeadsService.promote(id, dto);
+  }
+
+  @Get('form-fields')
+  listFormFields() {
+    return this.salesService.listFormFields();
+  }
+
+  @Get('applicants/:userId/document-requests')
+  listDocumentRequests(@Param('userId') userId: string) {
+    return this.documentRequestsService.listForUser(userId);
+  }
+
+  @Post('applicants/:userId/document-requests')
+  createDocumentRequest(
+    @Param('userId') userId: string,
+    @Body() dto: CreateDocumentRequestDto,
+  ) {
+    return this.documentRequestsService.create(userId, dto);
+  }
+
+  @Delete('applicants/:userId/document-requests/:id')
+  cancelDocumentRequest(
+    @Param('userId') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.documentRequestsService.cancel(userId, id);
+  }
+
+  @Get('applicants/:userId/document-requests/:id/file')
+  async downloadRequestedFile(
+    @Param('userId') userId: string,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const request = await this.documentRequestsService.findOne(userId, id);
+    if (!request.file) {
+      throw new NotFoundException('No file uploaded for this request yet');
+    }
+    const filePath = join(
+      DOCUMENT_REQUEST_UPLOAD_DIR,
+      request.file.storedFileName,
+    );
+    return res.sendFile(filePath, (err) => {
+      if (err) throw new NotFoundException('File not found');
+    });
   }
 }
