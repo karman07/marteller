@@ -2,17 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DragEvent } from "react";
-import { Check, Copy, Mail, Phone, Plus, Trash2, UserPlus } from "lucide-react";
+import { Check, Copy, Mail, Phone, Plus, Trash2, User, UserPlus } from "lucide-react";
 import {
   SALES_LEAD_STATUSES,
   SalesLead,
   SalesLeadStatus,
+  SalesTeamMember,
   createSalesLead,
   deleteSalesLead,
+  fetchSalesTeam,
   listSalesLeads,
   promoteSalesLead,
   updateSalesLead,
 } from "@/lib/sales";
+import { useAuth } from "@/context/AuthContext";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
@@ -21,11 +24,14 @@ function formatDate(iso: string) {
 }
 
 export default function LeadsPage() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<SalesLead[]>([]);
+  const [team, setTeam] = useState<SalesTeamMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<SalesLead | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<SalesLeadStatus | null>(null);
+  const [mineOnly, setMineOnly] = useState(false);
 
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -33,6 +39,7 @@ export default function LeadsPage() {
   const [phone, setPhone] = useState("");
   const [source, setSource] = useState("");
   const [notes, setNotes] = useState("");
+  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,14 +61,24 @@ export default function LeadsPage() {
 
   useEffect(() => {
     load();
+    fetchSalesTeam()
+      .then(setTeam)
+      .catch(() => {});
   }, []);
+
+  const teamById = useMemo(() => new Map(team.map((m) => [m._id, m])), [team]);
+
+  const visibleLeads = useMemo(
+    () => (mineOnly && user ? leads.filter((l) => l.assignedToUserId === user.id) : leads),
+    [leads, mineOnly, user],
+  );
 
   const byStatus = useMemo(() => {
     const map = new Map<SalesLeadStatus, SalesLead[]>();
     for (const s of SALES_LEAD_STATUSES) map.set(s.value, []);
-    for (const lead of leads) map.get(lead.status)?.push(lead);
+    for (const lead of visibleLeads) map.get(lead.status)?.push(lead);
     return map;
-  }, [leads]);
+  }, [visibleLeads]);
 
   function resetForm() {
     setName("");
@@ -70,6 +87,7 @@ export default function LeadsPage() {
     setPhone("");
     setSource("");
     setNotes("");
+    setAssignedToUserId("");
     setError(null);
   }
 
@@ -88,6 +106,7 @@ export default function LeadsPage() {
         phone: phone.trim() || undefined,
         source: source.trim() || undefined,
         notes: notes.trim() || undefined,
+        assignedToUserId: assignedToUserId || undefined,
       });
       setLeads((prev) => [lead, ...prev]);
       setCreateOpen(false);
@@ -115,6 +134,7 @@ export default function LeadsPage() {
         phone: phone.trim() || undefined,
         source: source.trim() || undefined,
         notes: notes.trim() || undefined,
+        assignedToUserId,
       });
       setLeads((prev) => prev.map((l) => (l._id === updated._id ? updated : l)));
       setEditingLead(updated);
@@ -139,6 +159,7 @@ export default function LeadsPage() {
     setPhone(lead.phone ?? "");
     setSource(lead.source ?? "");
     setNotes(lead.notes ?? "");
+    setAssignedToUserId(lead.assignedToUserId ?? "");
     setError(null);
     setPromoteResult(null);
   }
@@ -197,21 +218,32 @@ export default function LeadsPage() {
           <h1 className="text-xl font-semibold tracking-tight text-ink">Leads</h1>
           <p className="mt-1 text-sm text-ink-soft">Prospects the sales team is working — not yet a Marteller account.</p>
         </div>
-        <Button
-          onClick={() => {
-            resetForm();
-            setCreateOpen(true);
-          }}
-          className="gap-1.5"
-        >
-          <Plus size={15} /> New lead
-        </Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-medium text-ink-soft">
+            <input
+              type="checkbox"
+              checked={mineOnly}
+              onChange={(e) => setMineOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-line accent-accent"
+            />
+            My leads only
+          </label>
+          <Button
+            onClick={() => {
+              resetForm();
+              setCreateOpen(true);
+            }}
+            className="gap-1.5"
+          >
+            <Plus size={15} /> New lead
+          </Button>
+        </div>
       </div>
 
       <div className="px-8 py-6">
-        {!loaded ? null : leads.length === 0 ? (
+        {!loaded ? null : visibleLeads.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-6 py-14 text-center text-sm text-ink-muted">
-            No leads yet — add one to start tracking outreach.
+            {mineOnly ? "No leads assigned to you." : "No leads yet — add one to start tracking outreach."}
           </div>
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-2">
@@ -259,7 +291,23 @@ export default function LeadsPage() {
                             <Mail size={11} /> {lead.email}
                           </p>
                         )}
-                        <p className="mt-2 text-[11px] text-ink-muted">{formatDate(lead.createdAt)}</p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="text-[11px] text-ink-muted">{formatDate(lead.createdAt)}</p>
+                          {lead.assignedToUserId && (
+                            <span
+                              className={`flex items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                lead.assignedToUserId === user?.id
+                                  ? "bg-accent-soft/40 text-accent"
+                                  : "bg-cream-secondary text-ink-muted"
+                              }`}
+                            >
+                              <User size={9} />
+                              {teamById.get(lead.assignedToUserId)?.name ??
+                                teamById.get(lead.assignedToUserId)?.email ??
+                                "Unknown"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -284,6 +332,9 @@ export default function LeadsPage() {
           setSource={setSource}
           notes={notes}
           setNotes={setNotes}
+          team={team}
+          assignedToUserId={assignedToUserId}
+          setAssignedToUserId={setAssignedToUserId}
           error={error}
         />
         <Button onClick={handleCreate} disabled={saving} className="mt-4 w-full">
@@ -305,6 +356,9 @@ export default function LeadsPage() {
           setSource={setSource}
           notes={notes}
           setNotes={setNotes}
+          team={team}
+          assignedToUserId={assignedToUserId}
+          setAssignedToUserId={setAssignedToUserId}
           error={error}
         />
 
@@ -365,6 +419,9 @@ function LeadForm({
   setSource,
   notes,
   setNotes,
+  team,
+  assignedToUserId,
+  setAssignedToUserId,
   error,
 }: {
   name: string;
@@ -379,6 +436,9 @@ function LeadForm({
   setSource: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
+  team: SalesTeamMember[];
+  assignedToUserId: string;
+  setAssignedToUserId: (v: string) => void;
   error: string | null;
 }) {
   return (
@@ -423,6 +483,18 @@ function LeadForm({
         rows={3}
         className="w-full rounded-xl border border-line bg-cream px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
       />
+      <select
+        value={assignedToUserId}
+        onChange={(e) => setAssignedToUserId(e.target.value)}
+        className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+      >
+        <option value="">Unassigned</option>
+        {team.map((m) => (
+          <option key={m._id} value={m._id}>
+            {m.name ?? m.email}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

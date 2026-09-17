@@ -248,9 +248,22 @@ export type SalesLead = {
   notes?: string;
   status: SalesLeadStatus;
   convertedUserId?: string;
+  assignedToUserId?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+export type SalesTeamMember = {
+  _id: string;
+  name?: string;
+  email: string | null;
+};
+
+// Every sales rep sees the same team list, which is what lets them hand
+// leads to each other rather than only admin doing the assigning.
+export function fetchSalesTeam() {
+  return request<SalesTeamMember[]>("/sales/team");
+}
 
 export function listSalesLeads() {
   return request<SalesLead[]>("/sales/leads");
@@ -263,6 +276,7 @@ export function createSalesLead(payload: {
   phone?: string;
   source?: string;
   notes?: string;
+  assignedToUserId?: string;
 }) {
   return request<SalesLead>("/sales/leads", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -277,6 +291,7 @@ export function updateSalesLead(
     source: string;
     notes: string;
     status: SalesLeadStatus;
+    assignedToUserId: string;
   }>,
 ) {
   return request<SalesLead>(`/sales/leads/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
