@@ -1,8 +1,12 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { Check } from "lucide-react";
 import { Container } from "./ui/Container";
 import { SectionLabel } from "./ui/Pill";
 import { Button } from "./ui/Button";
 import { Reveal } from "./Reveal";
+import { trackFunnelStep } from "@/lib/analytics";
 
 const plans = [
   {
@@ -45,8 +49,28 @@ const plans = [
 ];
 
 export function PricingSection() {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    let fired = false;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !fired) {
+          fired = true;
+          trackFunnelStep("pricing_view");
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section id="pricing" className="bg-cream py-24 sm:py-32">
+    <section id="pricing" ref={sectionRef} className="bg-cream py-24 sm:py-32">
       <Container>
         <Reveal className="mx-auto max-w-2xl text-center">
           <SectionLabel>Pricing</SectionLabel>

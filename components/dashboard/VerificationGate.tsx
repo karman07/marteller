@@ -11,6 +11,7 @@ import {
   fetchVerificationFormFields,
   submitVerification,
 } from "@/lib/verification";
+import { trackFunnelStep } from "@/lib/analytics";
 
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_PHONE_BYPASS === "true";
 
@@ -63,6 +64,7 @@ export function VerificationGate({
         businessProof: businessProof ?? undefined,
         addressProof: addressProof ?? undefined,
       });
+      trackFunnelStep("verification_submitted");
       onUpdated(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit verification.");

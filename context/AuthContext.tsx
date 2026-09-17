@@ -11,6 +11,7 @@ import {
 import { signOut } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
 import { AppUser, clearToken, fetchMe, getToken, setToken } from "@/lib/api";
+import { trackFunnelStep } from "@/lib/analytics";
 
 type AuthContextValue = {
   user: AppUser | null;
@@ -46,6 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setSession = useCallback((token: string, nextUser: AppUser) => {
     setToken(token);
     setUser(nextUser);
+    // Fires for both a brand-new signup and a returning login — there's no
+    // separate signal from the backend distinguishing the two at this
+    // call site, so this approximates "browsing session ended in an
+    // authenticated session" rather than a strict first-time-signup event.
+    trackFunnelStep("signup_completed");
   }, []);
 
   const updateUser = useCallback((nextUser: AppUser) => {
@@ -64,7 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         loginModalOpen,
-        openLoginModal: () => setLoginModalOpen(true),
+        openLoginModal: () => {
+          trackFunnelStep("signup_started");
+          setLoginModalOpen(true);
+        },
         closeLoginModal: () => setLoginModalOpen(false),
         setSession,
         updateUser,
