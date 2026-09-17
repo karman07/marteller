@@ -7,6 +7,7 @@ import type { Channel } from '../templates/schemas/template.schema';
 import { TemplatesService } from '../templates/templates.service';
 import { VerificationService } from '../verification/verification.service';
 import { WalletService } from '../wallet/wallet.service';
+import { PlanEnforcementService } from '../billing/plan-enforcement.service';
 import { PricingService } from './pricing.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import {
@@ -28,6 +29,7 @@ export class MessagesService {
     private readonly templatesService: TemplatesService,
     private readonly verificationService: VerificationService,
     private readonly walletService: WalletService,
+    private readonly planEnforcementService: PlanEnforcementService,
     private readonly pricingService: PricingService,
     private readonly config: ConfigService,
     @Inject(WHATSAPP_PROVIDER) private readonly whatsappProvider: MessageProvider,
@@ -66,9 +68,23 @@ export class MessagesService {
     });
 
     const totalCostPaise = perRecipient.reduce((sum, r) => sum + r.costPaise, 0);
-    const { balancePaise } = await this.walletService.getBalance(userId);
-    if (balancePaise < totalCostPaise) {
-      throw new BadRequestException('Insufficient balance. Add funds to continue.');
+
+    // Try to cover the whole batch out of the plan allowance first — an
+    // all-or-nothing reservation (not per-recipient) so a bulk send never
+    // ends up half-billed-to-plan/half-billed-to-wallet. If the allowance
+    // can't fit the full batch, it falls through to ordinary wallet billing
+    // for the entire batch instead.
+    const coveredByPlan = await this.planEnforcementService.checkAndReserve(
+      userId,
+      template.channel,
+      perRecipient.length,
+    );
+
+    if (!coveredByPlan) {
+      const { balancePaise } = await this.walletService.getBalance(userId);
+      if (balancePaise < totalCostPaise) {
+        throw new BadRequestException('Insufficient balance. Add funds to continue.');
+      }
     }
 
     const results = await Promise.all(
@@ -90,7 +106,7 @@ export class MessagesService {
     );
 
     const actualCostPaise = results.reduce((sum, r) => sum + r.costPaise, 0);
-    if (actualCostPaise > 0) {
+    if (!coveredByPlan && actualCostPaise > 0) {
       const channelLabel = template.channel === 'whatsapp' ? 'WhatsApp' : template.channel === 'email' ? 'Email' : 'SMS';
       await this.walletService.debit(
         userId,

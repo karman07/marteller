@@ -5,7 +5,14 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Exposes request.rawBody alongside the normal parsed JSON body on
+    // every request — needed by BillingController's Razorpay webhook
+    // route to verify the HMAC signature against the exact raw bytes
+    // Razorpay signed, without disabling JSON parsing for every other
+    // route in the app.
+    rawBody: true,
+  });
 
   app.enableCors({
     origin: [

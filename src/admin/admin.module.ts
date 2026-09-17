@@ -4,6 +4,7 @@ import { UsersModule } from '../users/users.module';
 import { SalesModule } from '../sales/sales.module';
 import { DocumentRequestsModule } from '../document-requests/document-requests.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { BillingModule } from '../billing/billing.module';
 import { AdminController } from './admin.controller';
 import { AdminGuard } from './admin.guard';
 
@@ -14,6 +15,7 @@ import { AdminGuard } from './admin.guard';
     SalesModule,
     DocumentRequestsModule,
     AnalyticsModule,
+    BillingModule,
   ],
   controllers: [AdminController],
   providers: [AdminGuard],

@@ -17,6 +17,7 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { MailDomainsService } from '../mail-core/mail-domains.service';
 import { SuppressionService } from '../mail-core/suppression.service';
 import { WalletService } from '../wallet/wallet.service';
+import { PlanEnforcementService } from '../billing/plan-enforcement.service';
 import { PricingService } from '../messages/pricing.service';
 import { SendEmailDto } from './dto/send-email.dto';
 import { MailUsageService } from './mail-usage.service';
@@ -38,6 +39,7 @@ export class MailService {
     private readonly mailDomainsService: MailDomainsService,
     private readonly suppressionService: SuppressionService,
     private readonly walletService: WalletService,
+    private readonly planEnforcementService: PlanEnforcementService,
     private readonly pricingService: PricingService,
     private readonly mailUsageService: MailUsageService,
     @InjectQueue(MAIL_OUTBOUND_QUEUE) private readonly queue: Queue,
@@ -66,11 +68,23 @@ export class MailService {
     const costPaise = this.pricingService.estimate('email', {
       bodyLength: (dto.html ?? dto.text ?? '').length,
     });
-    const { balancePaise } = await this.walletService.getBalance(userId);
-    if (balancePaise < costPaise) {
-      throw new BadRequestException(
-        'Insufficient balance. Add funds to continue.',
-      );
+
+    // Decided once, here, and persisted on the EmailMessage below — see
+    // that field's comment for why MailQueueProcessor must read this back
+    // rather than re-checking the plan at debit time.
+    const withinPlanAllowance = await this.planEnforcementService.checkAndReserve(
+      userId,
+      'email',
+      1,
+    );
+
+    if (!withinPlanAllowance) {
+      const { balancePaise } = await this.walletService.getBalance(userId);
+      if (balancePaise < costPaise) {
+        throw new BadRequestException(
+          'Insufficient balance. Add funds to continue.',
+        );
+      }
     }
 
     await this.mailUsageService.reserve(userId, 1);
@@ -98,6 +112,7 @@ export class MailService {
       text: dto.text,
       status: 'queued',
       costPaise,
+      withinPlanAllowance,
       relatedMessageId: (
         relatedMessage._id as { toString(): string }
       ).toString(),

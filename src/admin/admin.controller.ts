@@ -26,6 +26,10 @@ import {
 import { DocumentRequestsService } from '../document-requests/document-requests.service';
 import { CreateDocumentRequestDto } from '../document-requests/dto/create-document-request.dto';
 import { AnalyticsService } from '../analytics/analytics.service';
+import { PlansService } from '../billing/plans.service';
+import { SubscriptionsService } from '../billing/subscriptions.service';
+import { CreatePlanDto } from '../billing/dto/create-plan.dto';
+import { UpdatePlanDto } from '../billing/dto/update-plan.dto';
 
 const VERIFICATION_UPLOAD_DIR = join(process.cwd(), 'uploads', 'verification');
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
@@ -48,6 +52,8 @@ export class AdminController {
     private readonly salesLeadsService: SalesLeadsService,
     private readonly documentRequestsService: DocumentRequestsService,
     private readonly analyticsService: AnalyticsService,
+    private readonly plansService: PlansService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   @Get('applicants')
@@ -177,5 +183,35 @@ export class AdminController {
     return res.sendFile(filePath, (err) => {
       if (err) throw new NotFoundException('File not found');
     });
+  }
+
+  // Plan CRUD — admin-only management of subscription tiers. Reads go
+  // through PlansService.listAll() (includes inactive plans), unlike the
+  // public BillingController.listPlans() which only shows active ones.
+  @Get('plans')
+  listPlans() {
+    return this.plansService.listAll();
+  }
+
+  @Post('plans')
+  createPlan(@Body() dto: CreatePlanDto) {
+    return this.plansService.create(dto);
+  }
+
+  @Patch('plans/:id')
+  updatePlan(@Param('id') id: string, @Body() dto: UpdatePlanDto) {
+    return this.plansService.update(id, dto);
+  }
+
+  @Delete('plans/:id')
+  removePlan(@Param('id') id: string) {
+    return this.plansService.remove(id);
+  }
+
+  // Cost/revenue analytics — admin-only, per the decision that sales reps
+  // don't see platform financials (mirrors the analytics/funnel split above).
+  @Get('revenue')
+  revenue() {
+    return this.subscriptionsService.revenueSummary();
   }
 }

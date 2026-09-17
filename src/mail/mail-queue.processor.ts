@@ -104,12 +104,14 @@ export class MailQueueProcessor extends WorkerHost {
 
       email.sentAt = new Date();
       await this.finish(email, 'sent');
-      await this.walletService.debit(
-        email.userId,
-        email.costPaise,
-        `Email — ${email.subject}`,
-        email.relatedMessageId,
-      );
+      if (!email.withinPlanAllowance) {
+        await this.walletService.debit(
+          email.userId,
+          email.costPaise,
+          `Email — ${email.subject}`,
+          email.relatedMessageId,
+        );
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Relay handoff failed';

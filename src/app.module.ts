@@ -23,6 +23,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { DocumentRequestsModule } from './document-requests/document-requests.module';
 import { MailCoreModule } from './mail-core/mail-core.module';
 import { MailModule } from './mail/mail.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { MailModule } from './mail/mail.module';
     DocumentRequestsModule,
     MailCoreModule,
     MailModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

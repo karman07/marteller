@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { MailCoreModule } from '../mail-core/mail-core.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { BillingModule } from '../billing/billing.module';
 import { AiModule } from '../ai/ai.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { LeadsModule } from '../leads/leads.module';
@@ -50,6 +51,7 @@ import { MailController } from './mail.controller';
     MailCoreModule,
     MailQueueModule,
     WalletModule,
+    BillingModule,
     AiModule,
     WorkflowsModule,
     LeadsModule,

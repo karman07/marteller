@@ -99,6 +99,16 @@ export class EmailMessage {
   @Prop({ required: true })
   costPaise: number;
 
+  // Set once at enqueue time by PlanEnforcementService and only ever READ
+  // (never re-decided) at debit time in MailQueueProcessor — the balance
+  // check happens synchronously in MailService.send(), but the actual
+  // wallet debit happens later, asynchronously, in the queue worker. If
+  // "within plan" were re-derived at debit time instead of persisted here,
+  // a message could be judged differently between the two moments under
+  // concurrent sends, causing double-charging or double-counting.
+  @Prop({ default: false })
+  withinPlanAllowance: boolean;
+
   @Prop()
   relatedMessageId?: string;
 
