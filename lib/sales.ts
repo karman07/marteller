@@ -127,6 +127,31 @@ export function fetchUsage(userId: string) {
   return request<UsageSummary>(`/sales/applicants/${userId}/usage`);
 }
 
+export type ActivityEvent = {
+  app: "frontend" | "sales" | "admin";
+  type: "page_view" | "click" | "feature_interest" | "funnel_step" | "custom";
+  name: string;
+  path: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type ApplicantTimeline = {
+  events: ActivityEvent[];
+  funnel: {
+    viewedPricing: boolean;
+    startedSignup: boolean;
+    completedSignup: boolean;
+    submittedVerification: boolean;
+    startedCheckout: boolean;
+    completedCheckout: boolean;
+  };
+};
+
+export function fetchApplicantEvents(userId: string) {
+  return request<ApplicantTimeline>(`/sales/applicants/${userId}/events`);
+}
+
 export function reviewVerification(
   userId: string,
   status: "verified" | "rejected",
