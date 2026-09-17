@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
+import { MailCoreModule } from '../mail-core/mail-core.module';
 import {
   BusinessVerification,
   BusinessVerificationSchema,
@@ -15,6 +17,8 @@ import { VerificationController } from './verification.controller';
 @Module({
   imports: [
     AuthModule,
+    UsersModule,
+    MailCoreModule,
     MongooseModule.forFeature([
       { name: BusinessVerification.name, schema: BusinessVerificationSchema },
       { name: VerificationFieldDef.name, schema: VerificationFieldDefSchema },

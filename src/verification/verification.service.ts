@@ -18,6 +18,8 @@ import {
 } from './schemas/verification-field.schema';
 import { DevReviewDto } from './dto/dev-review.dto';
 import { CreateFieldDto, UpdateFieldDto } from './dto/upsert-field.dto';
+import { UsersService } from '../users/users.service';
+import { SystemMailService } from '../mail-core/system-mail.service';
 
 // The starting form — seeded once when no fields exist yet, so submissions
 // keep working out of the box. The sales team can edit/remove/add to this
@@ -67,6 +69,8 @@ export class VerificationService {
     @InjectModel(VerificationFieldDef.name)
     private readonly fieldModel: Model<VerificationFieldDefDocument>,
     private readonly config: ConfigService,
+    private readonly usersService: UsersService,
+    private readonly systemMailService: SystemMailService,
   ) {}
 
   async findByUserId(userId: string) {
@@ -162,9 +166,11 @@ export class VerificationService {
     );
   }
 
-  // The real review action — gated by SalesGuard at the controller level,
-  // not the dev bypass. This is what actually lets a verification move past
-  // "pending" once there's a sales team to do the reviewing.
+  // The real review action — gated by SalesGuard/AdminGuard at the
+  // controller level, not the dev bypass. This is what actually lets a
+  // verification move past "pending" once there's a sales/admin team to
+  // do the reviewing, and unlocks the dashboard (see VerificationGate on
+  // the frontend — it blocks until status === 'verified').
   async review(
     userId: string,
     status: 'verified' | 'rejected',
@@ -182,7 +188,45 @@ export class VerificationService {
         'No verification submission found for this user',
       );
     }
+
+    // Never let a notification failure roll back or mask the status change
+    // that already succeeded above — this is best-effort, logged inside
+    // SystemMailService itself.
+    await this.notifyReviewOutcome(userId, status, reviewNote);
+
     return record;
+  }
+
+  private async notifyReviewOutcome(
+    userId: string,
+    status: 'verified' | 'rejected',
+    reviewNote?: string,
+  ) {
+    const user = await this.usersService.findById(userId);
+    if (!user?.email) return;
+
+    const name = user.name ?? 'there';
+    if (status === 'verified') {
+      await this.systemMailService.send({
+        to: user.email,
+        template: 'verification_approved',
+        subject: 'Your Marteller account is verified',
+        text: `Hi ${name},\n\nYour business verification has been approved — your dashboard is now unlocked and you can start sending WhatsApp, Email, and SMS messages.\n\n— Marteller`,
+        html: `<p>Hi ${name},</p><p>Your business verification has been approved — your dashboard is now unlocked and you can start sending WhatsApp, Email, and SMS messages.</p><p>— Marteller</p>`,
+      });
+    } else {
+      const noteHtml = reviewNote
+        ? `<p><strong>Reviewer note:</strong> ${reviewNote}</p>`
+        : '';
+      const noteText = reviewNote ? `\nReviewer note: ${reviewNote}\n` : '';
+      await this.systemMailService.send({
+        to: user.email,
+        template: 'verification_rejected',
+        subject: 'Action needed: your Marteller verification was rejected',
+        text: `Hi ${name},\n\nYour business verification was rejected. Please update your details and resubmit from your dashboard.\n${noteText}\n— Marteller`,
+        html: `<p>Hi ${name},</p><p>Your business verification was rejected. Please update your details and resubmit from your dashboard.</p>${noteHtml}<p>— Marteller</p>`,
+      });
+    }
   }
 
   async devReview(userId: string, dto: DevReviewDto) {
