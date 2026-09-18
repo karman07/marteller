@@ -11,7 +11,6 @@ import {
   LogOut,
   Tag,
   UserCog,
-  UserPlus,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -26,8 +25,7 @@ const NAV_GROUPS = [
   {
     label: "Sales",
     items: [
-      { href: "/applicants", label: "Users", icon: Users },
-      { href: "/leads", label: "Leads", icon: UserPlus },
+      { href: "/applicants", label: "Pipeline", icon: Users },
       { href: "/team", label: "Sales team", icon: UserCog },
       { href: "/sales-activity", label: "Sales activity", icon: Activity },
     ],

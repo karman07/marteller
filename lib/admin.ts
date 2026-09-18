@@ -1,7 +1,17 @@
 import { BACKEND_URL, request, requestForm } from "./http";
 
 export type VerificationStatus = "not_submitted" | "pending" | "verified" | "rejected";
-export type SalesStage = "new" | "contacted" | "qualified" | "converted" | "lost";
+// Kept identical to the backend's SalesLeadStatus — a lead and a customer
+// share one unified pipeline (see fetchPipeline()), so the same stage
+// names mean the same thing regardless of which kind a card is.
+export type SalesStage =
+  | "new"
+  | "contacted"
+  | "qualified"
+  | "negotiating"
+  | "pending_verification"
+  | "converted"
+  | "lost";
 export type VerificationFieldType = "text" | "textarea" | "select" | "number";
 
 export const VERIFICATION_STATUSES: { value: VerificationStatus; label: string }[] = [
@@ -15,6 +25,8 @@ export const SALES_STAGES: { value: SalesStage; label: string }[] = [
   { value: "new", label: "New" },
   { value: "contacted", label: "Contacted" },
   { value: "qualified", label: "Qualified" },
+  { value: "negotiating", label: "Negotiating" },
+  { value: "pending_verification", label: "Pending verification" },
   { value: "converted", label: "Converted" },
   { value: "lost", label: "Lost" },
 ];
@@ -106,6 +118,29 @@ export type AdminStats = {
 
 export function listApplicants() {
   return request<{ items: Applicant[]; isDummyData: boolean }>("/admin/applicants");
+}
+
+export type PipelineEntry = {
+  kind: "lead" | "customer";
+  id: string;
+  name: string;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string | null;
+  notes: string | null;
+  stage: SalesStage;
+  assignedToUserId: string | null;
+  verificationStatus: VerificationStatus | null;
+  createdAt: string;
+};
+
+// The single unified board — leads and customers together, one pipeline.
+// A promoted lead only ever appears here as its linked customer entry
+// (kind: "customer"), never as a separate lead card too — see the
+// backend's SalesService.listPipeline() comment.
+export function fetchPipeline() {
+  return request<PipelineEntry[]>("/admin/pipeline");
 }
 
 export function fetchStats() {
@@ -260,26 +295,8 @@ export function listFormFields() {
   return request<VerificationFormField[]>("/admin/form-fields");
 }
 
-export type SalesLeadStatus =
-  | "new"
-  | "contacted"
-  | "qualified"
-  | "demo_scheduled"
-  | "negotiating"
-  | "pending_verification"
-  | "converted"
-  | "lost";
-
-export const SALES_LEAD_STATUSES: { value: SalesLeadStatus; label: string }[] = [
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "qualified", label: "Qualified" },
-  { value: "demo_scheduled", label: "Demo scheduled" },
-  { value: "negotiating", label: "Negotiating" },
-  { value: "pending_verification", label: "Pending verification" },
-  { value: "converted", label: "Converted" },
-  { value: "lost", label: "Lost" },
-];
+export type SalesLeadStatus = SalesStage;
+export const SALES_LEAD_STATUSES = SALES_STAGES;
 
 export type SalesLead = {
   _id: string;
@@ -342,10 +359,6 @@ export type StaffActivity = {
 // SMS configured.
 export function fetchSalesActivity() {
   return request<StaffActivity[]>("/admin/sales-activity");
-}
-
-export function listSalesLeads() {
-  return request<SalesLead[]>("/admin/leads");
 }
 
 export function createSalesLead(payload: {
