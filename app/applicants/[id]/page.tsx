@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import {
   ActivityEvent,
+  addApplicantBalance,
   ApplicantDetail,
   ApplicantTimeline,
   cancelDocumentRequest,
@@ -51,6 +52,7 @@ import {
 import { formatINR } from "@/lib/currency";
 import { VerificationBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
@@ -87,6 +89,11 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   const [addressProofFile, setAddressProofFile] = useState<File | null>(null);
   const [submittingOnBehalf, setSubmittingOnBehalf] = useState(false);
   const [onBehalfError, setOnBehalfError] = useState<string | null>(null);
+
+  const [addBalanceOpen, setAddBalanceOpen] = useState(false);
+  const [balanceAmount, setBalanceAmount] = useState("500");
+  const [addingBalance, setAddingBalance] = useState(false);
+  const [addBalanceError, setAddBalanceError] = useState<string | null>(null);
 
   function load() {
     fetchApplicant(id)
@@ -145,6 +152,26 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
       setOnBehalfError(err instanceof Error ? err.message : "Could not submit documents.");
     } finally {
       setSubmittingOnBehalf(false);
+    }
+  }
+
+  async function handleAddBalance() {
+    const amountPaise = Math.round(parseFloat(balanceAmount) * 100);
+    if (!amountPaise || amountPaise <= 0) {
+      setAddBalanceError("Enter a valid amount.");
+      return;
+    }
+    setAddingBalance(true);
+    setAddBalanceError(null);
+    try {
+      await addApplicantBalance(id, amountPaise);
+      setAddBalanceOpen(false);
+      setBalanceAmount("500");
+      load();
+    } catch (err) {
+      setAddBalanceError(err instanceof Error ? err.message : "Could not add balance.");
+    } finally {
+      setAddingBalance(false);
     }
   }
 
@@ -246,9 +273,17 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
           </section>
 
           <section className="rounded-2xl border border-line bg-surface-2 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <BarChart3 size={15} className="text-accent" />
-              <h2 className="text-sm font-semibold text-ink">Usage</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BarChart3 size={15} className="text-accent" />
+                <h2 className="text-sm font-semibold text-ink">Usage</h2>
+              </div>
+              <button
+                onClick={() => setAddBalanceOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+              >
+                <Wallet size={12} /> Add balance
+              </button>
             </div>
             {!usage ? (
               <p className="text-sm text-ink-muted">Loading…</p>
@@ -518,6 +553,43 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
           )}
         </section>
       </div>
+
+      <Modal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} title="Add balance">
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-ink-muted">
+            Credited immediately — shows up in their transaction history as added by admin.
+          </p>
+          {addBalanceError && (
+            <p className="rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{addBalanceError}</p>
+          )}
+          <div className="grid grid-cols-3 gap-2">
+            {[500, 1000, 5000].map((amt) => (
+              <button
+                key={amt}
+                onClick={() => setBalanceAmount(String(amt))}
+                className={`rounded-xl border py-2.5 text-sm font-medium transition-colors ${
+                  balanceAmount === String(amt)
+                    ? "border-accent bg-accent-soft/40 text-accent"
+                    : "border-line text-ink-soft hover:text-ink"
+                }`}
+              >
+                {formatINR(amt * 100)}
+              </button>
+            ))}
+          </div>
+          <input
+            value={balanceAmount}
+            onChange={(e) => setBalanceAmount(e.target.value)}
+            type="number"
+            min="1"
+            placeholder="Custom amount (₹)"
+            className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+          />
+          <Button onClick={handleAddBalance} disabled={addingBalance} className="w-full">
+            {addingBalance ? "Adding…" : "Add balance"}
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

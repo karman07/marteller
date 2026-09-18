@@ -120,6 +120,37 @@ export function fetchUsage(userId: string) {
   return request<UsageSummary>(`/admin/applicants/${userId}/usage`);
 }
 
+// Admin crediting a customer's wallet directly — separate from Plan
+// (platform access fee); this is the pay-as-you-go balance that funds
+// messages beyond a plan's allowance. The customer can also do this
+// themselves from their own dashboard.
+export function addApplicantBalance(userId: string, amountPaise: number) {
+  return request<{ balancePaise: number }>(`/admin/applicants/${userId}/wallet/add-balance`, {
+    method: "POST",
+    body: JSON.stringify({ amountPaise }),
+  });
+}
+
+export type RateCard = {
+  _id: string;
+  whatsappMarketingPaise: number;
+  whatsappUtilityPaise: number;
+  whatsappAuthenticationPaise: number;
+  emailPaise: number;
+  smsPerSegmentPaise: number;
+  smsSegmentLength: number;
+};
+
+// Per-channel message pricing — separate from a Plan's monthly platform
+// fee. Any rate can be 0 to make that channel free.
+export function fetchRateCard() {
+  return request<RateCard>("/admin/pricing");
+}
+
+export function updateRateCard(payload: Partial<Omit<RateCard, "_id">>) {
+  return request<RateCard>("/admin/pricing", { method: "PATCH", body: JSON.stringify(payload) });
+}
+
 export type SmsRoute = "q" | "dlt";
 
 export type SmsCredential = {
