@@ -53,6 +53,10 @@ export class MessagesService {
     const provider = this.providerFor(template.channel);
     const sharedVariables = dto.variables ?? {};
 
+    // Fetched once for the whole batch rather than per-recipient — the
+    // rate only depends on channel/category/body length, never on `to`.
+    const rates = await this.pricingService.getRateCard();
+
     // Render per-recipient — a contact's own name (etc.) can override the
     // shared variables just for their message, so a bulk send is genuinely
     // personalized rather than sending everyone the same substituted text.
@@ -60,7 +64,7 @@ export class MessagesService {
       const variables = { ...sharedVariables, ...(dto.recipientVariables?.[to] ?? {}) };
       const body = render(template.body, variables);
       const subject = template.channel === 'email' ? render(template.subject, variables) : undefined;
-      const costPaise = this.pricingService.estimate(template.channel, {
+      const costPaise = this.pricingService.estimateFromRates(rates, template.channel, {
         category: template.category,
         bodyLength: body.length,
       });
@@ -229,6 +233,7 @@ export class MessagesService {
       email: templates.filter((t) => t.channel === 'email'),
       sms: templates.filter((t) => t.channel === 'sms'),
     };
+    const rates = await this.pricingService.getRateCard();
 
     const sampleNames = ['Priya', 'Rahul', 'Ananya', 'Vikram', 'Sneha', 'Arjun', 'Kavya', 'Rohan'];
     const docs: Record<string, unknown>[] = [];
@@ -253,7 +258,7 @@ export class MessagesService {
             ? `${name.toLowerCase()}@example.com`
             : `+91${9000000000 + Math.floor(Math.random() * 99999999)}`;
 
-        const costPaise = this.pricingService.estimate(channel, {
+        const costPaise = this.pricingService.estimateFromRates(rates, channel, {
           category: template.category,
           bodyLength: template.body.length,
         });

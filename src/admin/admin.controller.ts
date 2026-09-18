@@ -48,6 +48,10 @@ import { UsersService } from '../users/users.service';
 import { CreateTeamMemberDto } from '../users/dto/create-team-member.dto';
 import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
+import { PricingService } from '../messages/pricing.service';
+import { UpdateRateCardDto } from '../messages/dto/update-rate-card.dto';
+import { WalletService } from '../wallet/wallet.service';
+import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -73,6 +77,8 @@ export class AdminController {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly usersService: UsersService,
     private readonly smsCredentialsService: SmsCredentialsService,
+    private readonly pricingService: PricingService,
+    private readonly walletService: WalletService,
   ) {}
 
   @Get('applicants')
@@ -133,6 +139,18 @@ export class AdminController {
   @Get('applicants/:userId/usage')
   getUsage(@Param('userId') userId: string) {
     return this.salesService.getUsage(userId);
+  }
+
+  // Admin crediting a customer's wallet directly — separate from a Plan's
+  // monthly platform fee (see RateCard/Plan schema comments): this is the
+  // pay-as-you-go balance that funds messages beyond a plan's allowance
+  // (or all of them, for a plan-less account). The customer can also do
+  // this themselves from their own dashboard — this is the same action,
+  // just staff-initiated, and shows up as such in their transaction
+  // history.
+  @Post('applicants/:userId/wallet/add-balance')
+  addBalance(@Param('userId') userId: string, @Body() dto: AdminAddBalanceDto) {
+    return this.walletService.addBalance(userId, dto.amountPaise, 'Balance added by admin');
   }
 
   // Per-user Fast2SMS config — staff-provisioned, not self-service (see
@@ -274,6 +292,22 @@ export class AdminController {
   @Get('revenue')
   revenue() {
     return this.subscriptionsService.revenueSummary();
+  }
+
+  // Per-channel message pricing — admin-only (a platform financial
+  // setting, like revenue). Deliberately separate from Plan
+  // (priceMonthlyPaise is the platform access fee; this is what a
+  // message actually costs against the wallet). Any rate can be 0 to
+  // make that channel free; changes only affect sends from this point
+  // forward, see RateCard schema comment.
+  @Get('pricing')
+  getPricing() {
+    return this.pricingService.getRateCard();
+  }
+
+  @Patch('pricing')
+  updatePricing(@Body() dto: UpdateRateCardDto) {
+    return this.pricingService.updateRateCard(dto);
   }
 
   @Get('sales-team')

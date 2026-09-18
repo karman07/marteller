@@ -42,6 +42,8 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { UsersService } from '../users/users.service';
 import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
+import { WalletService } from '../wallet/wallet.service';
+import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -58,6 +60,7 @@ export class SalesController {
     private readonly analyticsService: AnalyticsService,
     private readonly usersService: UsersService,
     private readonly smsCredentialsService: SmsCredentialsService,
+    private readonly walletService: WalletService,
   ) {}
 
   // The pool of sales reps a lead can be (re)assigned to — every sales rep
@@ -128,6 +131,15 @@ export class SalesController {
   @Get('applicants/:userId/usage')
   getUsage(@Param('userId') userId: string) {
     return this.salesService.getUsage(userId);
+  }
+
+  // Sales crediting a customer's wallet directly — same action the
+  // customer can do themselves from their own dashboard, or admin can do
+  // via the identical route on AdminController. Separate from a Plan's
+  // platform fee — see RateCard/Plan schema comments.
+  @Post('applicants/:userId/wallet/add-balance')
+  addBalance(@Param('userId') userId: string, @Body() dto: AdminAddBalanceDto) {
+    return this.walletService.addBalance(userId, dto.amountPaise, 'Balance added by sales team');
   }
 
   // Per-user Fast2SMS config — staff-provisioned, not self-service (see

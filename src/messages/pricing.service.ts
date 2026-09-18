@@ -1,38 +1,74 @@
 import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { Channel, WhatsappCategory } from '../templates/schemas/template.schema';
-
-// Flat, illustrative dev-level rates in paise (1 INR = 100 paise). Loosely
-// modeled on real Indian WhatsApp Business API conversation pricing tiers.
-// Swap for real provider rate cards once a live provider is wired up.
-const WHATSAPP_RATES_PAISE: Record<WhatsappCategory, number> = {
-  marketing: 88,
-  utility: 35,
-  authentication: 35,
-};
-
-const EMAIL_RATE_PAISE = 10;
-const SMS_RATE_PAISE_PER_SEGMENT = 18;
-const SMS_SEGMENT_LENGTH = 160;
+import { RateCard, RateCardDocument } from './schemas/rate-card.schema';
+import { UpdateRateCardDto } from './dto/update-rate-card.dto';
 
 @Injectable()
 export class PricingService {
-  estimate(channel: Channel, opts: { category?: WhatsappCategory; bodyLength?: number } = {}) {
-    if (channel === 'whatsapp') {
-      return WHATSAPP_RATES_PAISE[opts.category ?? 'marketing'];
-    }
-    if (channel === 'email') {
-      return EMAIL_RATE_PAISE;
-    }
-    // sms
-    const segments = Math.max(1, Math.ceil((opts.bodyLength ?? 0) / SMS_SEGMENT_LENGTH));
-    return segments * SMS_RATE_PAISE_PER_SEGMENT;
+  constructor(
+    @InjectModel(RateCard.name) private readonly model: Model<RateCardDocument>,
+  ) {}
+
+  // Lazily seeds the singleton rate card (schema defaults = the original
+  // illustrative dev rates) on first access — same pattern
+  // VerificationService.listFields() uses for its own singleton-ish
+  // default config.
+  async getRateCard(): Promise<RateCardDocument> {
+    const existing = await this.model.findOne().exec();
+    if (existing) return existing;
+    return this.model.create({});
   }
 
-  rateCard() {
+  async updateRateCard(dto: UpdateRateCardDto): Promise<RateCardDocument> {
+    return this.model
+      .findOneAndUpdate({}, dto, { upsert: true, new: true, setDefaultsOnInsert: true })
+      .exec();
+  }
+
+  // Pure calculation against an already-fetched rate card — batch sends
+  // fetch the rate card once and call this per recipient, rather than
+  // hitting the DB once per recipient (see MessagesService.send()).
+  estimateFromRates(
+    rates: RateCard,
+    channel: Channel,
+    opts: { category?: WhatsappCategory; bodyLength?: number } = {},
+  ): number {
+    if (channel === 'whatsapp') {
+      const category = opts.category ?? 'marketing';
+      if (category === 'utility') return rates.whatsappUtilityPaise;
+      if (category === 'authentication') return rates.whatsappAuthenticationPaise;
+      return rates.whatsappMarketingPaise;
+    }
+    if (channel === 'email') {
+      return rates.emailPaise;
+    }
+    // sms
+    const segments = Math.max(1, Math.ceil((opts.bodyLength ?? 0) / rates.smsSegmentLength));
+    return segments * rates.smsPerSegmentPaise;
+  }
+
+  // Convenience for single-message call sites that don't already have a
+  // rate card in hand.
+  async estimate(
+    channel: Channel,
+    opts: { category?: WhatsappCategory; bodyLength?: number } = {},
+  ): Promise<number> {
+    const rates = await this.getRateCard();
+    return this.estimateFromRates(rates, channel, opts);
+  }
+
+  async rateCard() {
+    const rates = await this.getRateCard();
     return {
-      whatsapp: WHATSAPP_RATES_PAISE,
-      email: EMAIL_RATE_PAISE,
-      sms: { perSegmentPaise: SMS_RATE_PAISE_PER_SEGMENT, segmentLength: SMS_SEGMENT_LENGTH },
+      whatsapp: {
+        marketing: rates.whatsappMarketingPaise,
+        utility: rates.whatsappUtilityPaise,
+        authentication: rates.whatsappAuthenticationPaise,
+      } satisfies Record<WhatsappCategory, number>,
+      email: rates.emailPaise,
+      sms: { perSegmentPaise: rates.smsPerSegmentPaise, segmentLength: rates.smsSegmentLength },
     };
   }
 }

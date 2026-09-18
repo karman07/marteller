@@ -34,7 +34,11 @@ export class WalletService {
 
   // Dev-level top-up — no real payment gateway yet, this credits the wallet
   // directly. Clearly a test top-up; swap for a real payment webhook later.
-  async addBalance(userId: string, amountPaise: number) {
+  // `description` distinguishes a self-service top-up from one an admin/
+  // sales rep pushed on the customer's behalf (see AdminController/
+  // SalesController's add-balance routes) — shows up as-is in the
+  // customer's own transaction history for transparency.
+  async addBalance(userId: string, amountPaise: number, description = 'Balance top-up') {
     const user = await this.userModel
       .findByIdAndUpdate(userId, { $inc: { walletBalancePaise: amountPaise } }, { new: true })
       .exec();
@@ -44,7 +48,7 @@ export class WalletService {
       userId,
       type: 'credit',
       amountPaise,
-      description: 'Balance top-up',
+      description,
     });
 
     return { balancePaise: user.walletBalancePaise };

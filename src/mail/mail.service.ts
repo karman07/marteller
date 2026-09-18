@@ -65,7 +65,7 @@ export class MailService {
       );
     }
 
-    const costPaise = this.pricingService.estimate('email', {
+    const costPaise = await this.pricingService.estimate('email', {
       bodyLength: (dto.html ?? dto.text ?? '').length,
     });
 

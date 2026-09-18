@@ -6,6 +6,8 @@ import { DocumentRequestsModule } from '../document-requests/document-requests.m
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { BillingModule } from '../billing/billing.module';
 import { SmsCredentialsModule } from '../sms-credentials/sms-credentials.module';
+import { MessagesModule } from '../messages/messages.module';
+import { WalletModule } from '../wallet/wallet.module';
 import { AdminController } from './admin.controller';
 import { AdminGuard } from './admin.guard';
 
@@ -18,6 +20,8 @@ import { AdminGuard } from './admin.guard';
     AnalyticsModule,
     BillingModule,
     SmsCredentialsModule,
+    MessagesModule,
+    WalletModule,
   ],
   controllers: [AdminController],
   providers: [AdminGuard],
