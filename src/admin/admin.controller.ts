@@ -46,12 +46,14 @@ import { CreatePlanDto } from '../billing/dto/create-plan.dto';
 import { UpdatePlanDto } from '../billing/dto/update-plan.dto';
 import { UsersService } from '../users/users.service';
 import { CreateTeamMemberDto } from '../users/dto/create-team-member.dto';
+import { SetPasswordDto } from '../users/dto/set-password.dto';
 import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
 import { PricingService } from '../messages/pricing.service';
 import { UpdateRateCardDto } from '../messages/dto/update-rate-card.dto';
 import { WalletService } from '../wallet/wallet.service';
 import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
+import { StaffActivityService } from '../staff-activity/staff-activity.service';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -79,6 +81,7 @@ export class AdminController {
     private readonly smsCredentialsService: SmsCredentialsService,
     private readonly pricingService: PricingService,
     private readonly walletService: WalletService,
+    private readonly staffActivityService: StaffActivityService,
   ) {}
 
   @Get('applicants')
@@ -97,11 +100,19 @@ export class AdminController {
   }
 
   @Patch('applicants/:userId/verification')
-  reviewVerification(
+  async reviewVerification(
     @Param('userId') userId: string,
     @Body() dto: ReviewApplicationDto,
+    @Req() req: Request & { userId: string },
   ) {
-    return this.salesService.reviewVerification(userId, dto);
+    const record = await this.salesService.reviewVerification(userId, dto);
+    this.staffActivityService.log(
+      req.userId,
+      'verification_reviewed',
+      `${dto.status === 'verified' ? 'Approved' : 'Rejected'} business verification`,
+      { targetUserId: userId },
+    );
+    return record;
   }
 
   // Admin uploading verification documents on an applicant's behalf — see
@@ -149,8 +160,23 @@ export class AdminController {
   // just staff-initiated, and shows up as such in their transaction
   // history.
   @Post('applicants/:userId/wallet/add-balance')
-  addBalance(@Param('userId') userId: string, @Body() dto: AdminAddBalanceDto) {
-    return this.walletService.addBalance(userId, dto.amountPaise, 'Balance added by admin');
+  async addBalance(
+    @Param('userId') userId: string,
+    @Body() dto: AdminAddBalanceDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.walletService.addBalance(
+      userId,
+      dto.amountPaise,
+      'Balance added by admin',
+    );
+    this.staffActivityService.log(
+      req.userId,
+      'balance_added',
+      `Added ₹${(dto.amountPaise / 100).toFixed(2)} to wallet balance`,
+      { targetUserId: userId },
+    );
+    return result;
   }
 
   // Per-user Fast2SMS config — staff-provisioned, not self-service (see
@@ -161,12 +187,16 @@ export class AdminController {
   }
 
   @Put('applicants/:userId/sms-credential')
-  setSmsCredential(
+  async setSmsCredential(
     @Param('userId') userId: string,
     @Body() dto: UpsertSmsCredentialDto,
     @Req() req: Request & { userId: string },
   ) {
-    return this.smsCredentialsService.upsert(userId, dto, req.userId);
+    const credential = await this.smsCredentialsService.upsert(userId, dto, req.userId);
+    this.staffActivityService.log(req.userId, 'sms_configured', 'Configured SMS provider', {
+      targetUserId: userId,
+    });
+    return credential;
   }
 
   @Delete('applicants/:userId/sms-credential')
@@ -193,13 +223,35 @@ export class AdminController {
   }
 
   @Post('leads')
-  createLead(@Body() dto: CreateSalesLeadDto) {
-    return this.salesLeadsService.create(dto);
+  async createLead(@Body() dto: CreateSalesLeadDto, @Req() req: Request & { userId: string }) {
+    const lead = await this.salesLeadsService.create(dto);
+    this.staffActivityService.log(req.userId, 'lead_created', `Created lead "${lead.name}"`, {
+      targetLeadId: (lead._id as { toString(): string }).toString(),
+    });
+    return lead;
   }
 
   @Patch('leads/:id')
-  updateLead(@Param('id') id: string, @Body() dto: UpdateSalesLeadDto) {
-    return this.salesLeadsService.update(id, dto);
+  async updateLead(
+    @Param('id') id: string,
+    @Body() dto: UpdateSalesLeadDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const lead = await this.salesLeadsService.update(id, dto);
+    if (dto.assignedToUserId !== undefined) {
+      const summary = dto.assignedToUserId
+        ? `Assigned lead "${lead.name}" to a teammate`
+        : `Unassigned lead "${lead.name}"`;
+      this.staffActivityService.log(req.userId, 'lead_reassigned', summary, { targetLeadId: id });
+    } else if (dto.status) {
+      this.staffActivityService.log(
+        req.userId,
+        'lead_status_changed',
+        `Moved lead "${lead.name}" to ${dto.status.replace(/_/g, ' ')}`,
+        { targetLeadId: id },
+      );
+    }
+    return lead;
   }
 
   @Delete('leads/:id')
@@ -208,15 +260,33 @@ export class AdminController {
   }
 
   @Post('leads/:id/promote')
-  promoteLead(@Param('id') id: string, @Body() dto: PromoteLeadDto) {
-    return this.salesLeadsService.promote(id, dto);
+  async promoteLead(
+    @Param('id') id: string,
+    @Body() dto: PromoteLeadDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.salesLeadsService.promote(id, dto);
+    this.staffActivityService.log(
+      req.userId,
+      'lead_promoted',
+      `Started verification for "${result.lead.name}" (${result.email})`,
+      { targetLeadId: id, targetUserId: result.userId },
+    );
+    return result;
   }
 
   // Only reachable once the linked user's verification is approved (the
   // lead is 'converted' by then) — see SalesLeadsService.issueCredentials.
   @Post('leads/:id/credentials')
-  issueLeadCredentials(@Param('id') id: string) {
-    return this.salesLeadsService.issueCredentials(id);
+  async issueLeadCredentials(@Param('id') id: string, @Req() req: Request & { userId: string }) {
+    const result = await this.salesLeadsService.issueCredentials(id);
+    this.staffActivityService.log(
+      req.userId,
+      'credentials_issued',
+      `Issued login credentials for ${result.email}`,
+      { targetLeadId: id, targetUserId: result.userId },
+    );
+    return result;
   }
 
   @Get('form-fields')
@@ -319,8 +389,48 @@ export class AdminController {
   // a temporary password immediately — unlike SalesLeadsService.promote(),
   // there's no verification gate for staff accounts. No email/SMS delivery
   // is wired up, so the admin passes the credentials along themselves.
+  // dto.password lets admin choose the login instead of getting a
+  // generated one.
   @Post('sales-team')
-  createSalesTeamMember(@Body() dto: CreateTeamMemberDto) {
-    return this.usersService.createTeamMember(dto.email, dto.name, 'sales');
+  async createSalesTeamMember(
+    @Body() dto: CreateTeamMemberDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.usersService.createTeamMember(
+      dto.email,
+      dto.name,
+      'sales',
+      dto.password,
+    );
+    this.staffActivityService.log(
+      req.userId,
+      'sales_rep_created',
+      `Added ${dto.name} to the sales team`,
+      { targetUserId: (result.user._id as { toString(): string }).toString() },
+    );
+    return result;
+  }
+
+  // Resets an existing sales rep's password — same "admin can set it
+  // themselves, or leave it to generate one" as account creation.
+  @Post('sales-team/:userId/password')
+  async setSalesTeamPassword(
+    @Param('userId') userId: string,
+    @Body() dto: SetPasswordDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.usersService.setPassword(userId, dto.password);
+    this.staffActivityService.log(req.userId, 'password_reset', `Reset password for ${result.email}`, {
+      targetUserId: userId,
+    });
+    return result;
+  }
+
+  // What the sales team has actually been doing — leads worked,
+  // verification decisions, credentials issued, balances added, SMS
+  // configured. Admin-only, same reasoning as revenue/funnel above.
+  @Get('sales-activity')
+  listSalesActivity() {
+    return this.staffActivityService.listRecent(150);
   }
 }

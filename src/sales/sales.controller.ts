@@ -44,6 +44,7 @@ import { SmsCredentialsService } from '../sms-credentials/sms-credentials.servic
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
 import { WalletService } from '../wallet/wallet.service';
 import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
+import { StaffActivityService } from '../staff-activity/staff-activity.service';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -61,6 +62,7 @@ export class SalesController {
     private readonly usersService: UsersService,
     private readonly smsCredentialsService: SmsCredentialsService,
     private readonly walletService: WalletService,
+    private readonly staffActivityService: StaffActivityService,
   ) {}
 
   // The pool of sales reps a lead can be (re)assigned to — every sales rep
@@ -87,11 +89,19 @@ export class SalesController {
   }
 
   @Patch('applicants/:userId/verification')
-  reviewVerification(
+  async reviewVerification(
     @Param('userId') userId: string,
     @Body() dto: ReviewApplicationDto,
+    @Req() req: Request & { userId: string },
   ) {
-    return this.salesService.reviewVerification(userId, dto);
+    const record = await this.salesService.reviewVerification(userId, dto);
+    this.staffActivityService.log(
+      req.userId,
+      'verification_reviewed',
+      `${dto.status === 'verified' ? 'Approved' : 'Rejected'} business verification`,
+      { targetUserId: userId },
+    );
+    return record;
   }
 
   // Sales uploading verification documents on an applicant's behalf —
@@ -138,8 +148,23 @@ export class SalesController {
   // via the identical route on AdminController. Separate from a Plan's
   // platform fee — see RateCard/Plan schema comments.
   @Post('applicants/:userId/wallet/add-balance')
-  addBalance(@Param('userId') userId: string, @Body() dto: AdminAddBalanceDto) {
-    return this.walletService.addBalance(userId, dto.amountPaise, 'Balance added by sales team');
+  async addBalance(
+    @Param('userId') userId: string,
+    @Body() dto: AdminAddBalanceDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.walletService.addBalance(
+      userId,
+      dto.amountPaise,
+      'Balance added by sales team',
+    );
+    this.staffActivityService.log(
+      req.userId,
+      'balance_added',
+      `Added ₹${(dto.amountPaise / 100).toFixed(2)} to wallet balance`,
+      { targetUserId: userId },
+    );
+    return result;
   }
 
   // Per-user Fast2SMS config — staff-provisioned, not self-service (see
@@ -151,12 +176,16 @@ export class SalesController {
   }
 
   @Put('applicants/:userId/sms-credential')
-  setSmsCredential(
+  async setSmsCredential(
     @Param('userId') userId: string,
     @Body() dto: UpsertSmsCredentialDto,
     @Req() req: Request & { userId: string },
   ) {
-    return this.smsCredentialsService.upsert(userId, dto, req.userId);
+    const credential = await this.smsCredentialsService.upsert(userId, dto, req.userId);
+    this.staffActivityService.log(req.userId, 'sms_configured', 'Configured SMS provider', {
+      targetUserId: userId,
+    });
+    return credential;
   }
 
   @Delete('applicants/:userId/sms-credential')

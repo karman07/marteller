@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -116,17 +116,34 @@ export class UsersService {
   // pattern as SalesLeadsService.promote() (reuses the Firebase user if the
   // email already has one, e.g. a former test customer account), but always
   // sets the requested role and marks the account onboarded since staff
-  // skip the customer onboarding flow entirely.
-  async createTeamMember(email: string, name: string, role: 'sales' | 'admin') {
+  // skip the customer onboarding flow entirely. `password`, if given, lets
+  // admin choose the login themselves instead of relaying a generated one
+  // — applied whether the Firebase user is newly created or already
+  // existed (see setPassword() for resetting an existing member's later).
+  async createTeamMember(
+    email: string,
+    name: string,
+    role: 'sales' | 'admin',
+    password?: string,
+  ) {
+    let existingUid: string | null = null;
+    try {
+      existingUid = (await this.firebase.getUserByEmail(email)).uid;
+    } catch {
+      existingUid = null;
+    }
+
     let uid: string;
     let temporaryPassword: string | null = null;
-    try {
-      const existing = await this.firebase.getUserByEmail(email);
-      uid = existing.uid;
-    } catch {
-      temporaryPassword = generateTempPassword();
-      const created = await this.firebase.createUser(email, temporaryPassword);
-      uid = created.uid;
+    if (existingUid) {
+      uid = existingUid;
+      if (password) {
+        await this.firebase.updatePassword(uid, password);
+        temporaryPassword = password;
+      }
+    } else {
+      temporaryPassword = password ?? generateTempPassword();
+      uid = (await this.firebase.createUser(email, temporaryPassword)).uid;
     }
 
     let user = await this.findByFirebaseUid(uid);
@@ -139,6 +156,19 @@ export class UsersService {
     await user.save();
 
     return { user, temporaryPassword };
+  }
+
+  // Resets an existing staff member's password — admin can pass a
+  // specific one, or leave it unset to generate a random temp password
+  // the same way createTeamMember() does for a brand-new account.
+  async setPassword(userId: string, password?: string) {
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) throw new NotFoundException('User not found');
+
+    const finalPassword = password ?? generateTempPassword();
+    await this.firebase.updatePassword(user.firebaseUid, finalPassword);
+
+    return { email: user.email, temporaryPassword: finalPassword };
   }
 
   async updateSalesStage(
