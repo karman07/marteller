@@ -444,7 +444,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
           ) : (
             <div className="flex flex-col gap-4">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                {Object.entries(verification.fieldValues).map(([key, value]) => (
+                {Object.entries(verification.fieldValues ?? {}).map(([key, value]) => (
                   <Fragment key={key}>
                     <dt className="text-ink-muted">{fieldLabel(key)}</dt>
                     <dd className="text-ink">{value || "—"}</dd>
