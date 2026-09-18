@@ -74,6 +74,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   const [reviewNote, setReviewNote] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewJustSaved, setReviewJustSaved] = useState(false);
 
   const [stage, setStage] = useState<SalesStage>("new");
   const [notes, setNotes] = useState("");
@@ -124,12 +125,31 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   }, [id]);
 
   async function handleReview(status: "verified" | "rejected") {
+    const currentStatus = detail?.verification.status;
+    // Re-deciding an application that's already been approved/rejected has
+    // real consequences (verified gates the customer's actual dashboard
+    // access) — confirm before silently flipping it. Going pending -> a
+    // first decision needs no confirmation.
+    if (currentStatus === "verified" || currentStatus === "rejected") {
+      const consequence = status === "verified" ? "grant" : "revoke";
+      if (
+        !confirm(
+          `This applicant is currently ${currentStatus}. This will ${consequence} their platform access. Continue?`,
+        )
+      ) {
+        return;
+      }
+    }
+
     setReviewing(true);
     setReviewError(null);
+    setReviewJustSaved(false);
     try {
       await reviewVerification(id, status, reviewNote.trim() || undefined);
       load();
       setReviewNote("");
+      setReviewJustSaved(true);
+      setTimeout(() => setReviewJustSaved(false), 2500);
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : "Could not save review.");
     } finally {
@@ -528,6 +548,11 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
                 {reviewError && (
                   <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{reviewError}</p>
                 )}
+                {reviewJustSaved && (
+                  <p className="mb-2 flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                    <Check size={13} /> Verification status updated.
+                  </p>
+                )}
                 <textarea
                   value={reviewNote}
                   onChange={(e) => setReviewNote(e.target.value)}
@@ -536,16 +561,26 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
                   className="mb-2 w-full rounded-xl border border-line bg-cream px-3 py-2 text-sm text-ink outline-none focus:border-accent"
                 />
                 <div className="flex items-center gap-2">
-                  <Button onClick={() => handleReview("verified")} disabled={reviewing} className="flex-1 gap-1.5">
-                    <Check size={14} /> Approve — allow sign in
+                  <Button
+                    onClick={() => handleReview("verified")}
+                    disabled={reviewing || verification.status === "verified"}
+                    className="flex-1 gap-1.5"
+                  >
+                    <Check size={14} />
+                    {verification.status === "verified" ? "Already approved" : "Approve — allow sign in"}
                   </Button>
                   <Button
                     onClick={() => handleReview("rejected")}
-                    disabled={reviewing}
+                    disabled={reviewing || verification.status === "rejected"}
                     variant="danger"
                     className="flex-1 gap-1.5"
                   >
-                    <X size={14} /> Reject
+                    <X size={14} />
+                    {verification.status === "rejected"
+                      ? "Already rejected"
+                      : verification.status === "verified"
+                        ? "Reject — revoke access"
+                        : "Reject"}
                   </Button>
                 </div>
               </div>
