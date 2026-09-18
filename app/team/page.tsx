@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Copy, Plus, UserPlus } from "lucide-react";
-import { SalesTeamMember, createSalesTeamMember, listSalesTeam } from "@/lib/admin";
+import { Check, Copy, KeyRound, Plus, UserPlus } from "lucide-react";
+import {
+  SalesTeamMember,
+  createSalesTeamMember,
+  listSalesTeam,
+  setSalesTeamPassword,
+} from "@/lib/admin";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
@@ -13,13 +18,21 @@ function formatDate(iso: string) {
 export default function TeamPage() {
   const [team, setTeam] = useState<SalesTeamMember[]>([]);
   const [loaded, setLoaded] = useState(false);
+
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ email: string; temporaryPassword: string | null } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const [passwordTarget, setPasswordTarget] = useState<SalesTeamMember | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   function load() {
     listSalesTeam()
@@ -35,6 +48,7 @@ export default function TeamPage() {
   function openCreate() {
     setName("");
     setEmail("");
+    setPassword("");
     setError(null);
     setResult(null);
     setCreateOpen(true);
@@ -45,10 +59,14 @@ export default function TeamPage() {
       setError("Name and email are required.");
       return;
     }
+    if (password && password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const created = await createSalesTeamMember(email.trim(), name.trim());
+      const created = await createSalesTeamMember(email.trim(), name.trim(), password.trim());
       setResult({ email: created.user.email ?? email.trim(), temporaryPassword: created.temporaryPassword });
       load();
     } catch (err) {
@@ -61,6 +79,40 @@ export default function TeamPage() {
   function copyCredentials() {
     if (!result) return;
     const text = `Email: ${result.email}${result.temporaryPassword ? `\nTemporary password: ${result.temporaryPassword}` : ""}`;
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  function openPasswordReset(member: SalesTeamMember) {
+    setPasswordTarget(member);
+    setResetPassword("");
+    setResetError(null);
+    setResetResult(null);
+  }
+
+  async function handleResetPassword() {
+    if (!passwordTarget) return;
+    if (resetPassword && resetPassword.length < 6) {
+      setResetError("Password must be at least 6 characters.");
+      return;
+    }
+    setResetting(true);
+    setResetError(null);
+    try {
+      const result = await setSalesTeamPassword(passwordTarget._id, resetPassword.trim());
+      setResetResult({ email: result.email ?? passwordTarget.email ?? "", temporaryPassword: result.temporaryPassword });
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : "Could not reset password.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  function copyResetCredentials() {
+    if (!resetResult) return;
+    const text = `Email: ${resetResult.email}\nNew password: ${resetResult.temporaryPassword}`;
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -93,6 +145,12 @@ export default function TeamPage() {
                 <p className="text-sm font-semibold text-ink">{member.name ?? "Unnamed"}</p>
                 <p className="mt-0.5 truncate text-xs text-ink-muted">{member.email}</p>
                 <p className="mt-2 text-[11px] text-ink-muted">Added {formatDate(member.createdAt)}</p>
+                <button
+                  onClick={() => openPasswordReset(member)}
+                  className="mt-3 flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+                >
+                  <KeyRound size={12} /> Set password
+                </button>
               </div>
             ))}
           </div>
@@ -117,6 +175,12 @@ export default function TeamPage() {
                 type="email"
                 className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
               />
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password (optional — leave blank to generate one)"
+                className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+              />
               <Button onClick={handleCreate} disabled={saving} className="mt-1 w-full gap-1.5">
                 <UserPlus size={15} /> {saving ? "Creating…" : "Create account"}
               </Button>
@@ -136,6 +200,43 @@ export default function TeamPage() {
               )}
               <button
                 onClick={copyCredentials}
+                className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+              >
+                <Copy size={11} /> {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={!!passwordTarget} onClose={() => setPasswordTarget(null)} title="Set password">
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-ink-muted">
+            {passwordTarget?.name ?? passwordTarget?.email} — choose a specific password, or leave blank to
+            generate one.
+          </p>
+          {resetError && <p className="rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{resetError}</p>}
+          {!resetResult ? (
+            <>
+              <input
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                placeholder="New password (optional)"
+                className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+              />
+              <Button onClick={handleResetPassword} disabled={resetting} className="w-full gap-1.5">
+                <KeyRound size={15} /> {resetting ? "Setting…" : "Set password"}
+              </Button>
+            </>
+          ) : (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                <Check size={13} /> Password updated — share this with the rep
+              </p>
+              <p className="mt-1.5 text-xs text-ink">Email: {resetResult.email}</p>
+              <p className="text-xs text-ink">New password: {resetResult.temporaryPassword}</p>
+              <button
+                onClick={copyResetCredentials}
                 className="mt-2 flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
               >
                 <Copy size={11} /> {copied ? "Copied" : "Copy"}

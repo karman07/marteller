@@ -3,7 +3,17 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCard, IndianRupee, LayoutDashboard, LogOut, Tag, UserCog, UserPlus, Users } from "lucide-react";
+import {
+  Activity,
+  CreditCard,
+  IndianRupee,
+  LayoutDashboard,
+  LogOut,
+  Tag,
+  UserCog,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -19,6 +29,7 @@ const NAV_GROUPS = [
       { href: "/applicants", label: "Users", icon: Users },
       { href: "/leads", label: "Leads", icon: UserPlus },
       { href: "/team", label: "Sales team", icon: UserCog },
+      { href: "/sales-activity", label: "Sales activity", icon: Activity },
     ],
   },
   {

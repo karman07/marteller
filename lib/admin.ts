@@ -307,11 +307,41 @@ export function listSalesTeam() {
   return request<SalesTeamMember[]>("/admin/sales-team");
 }
 
-export function createSalesTeamMember(email: string, name: string) {
+// `password` left unset generates a random temp password instead — admin
+// can choose the login themselves rather than relaying a generated one.
+export function createSalesTeamMember(email: string, name: string, password?: string) {
   return request<{ user: SalesTeamMember; temporaryPassword: string | null }>("/admin/sales-team", {
     method: "POST",
-    body: JSON.stringify({ email, name }),
+    body: JSON.stringify({ email, name, password: password || undefined }),
   });
+}
+
+// Resets an existing rep's password — same "leave blank to generate one"
+// behavior as creation.
+export function setSalesTeamPassword(userId: string, password?: string) {
+  return request<{ email: string | null; temporaryPassword: string }>(
+    `/admin/sales-team/${userId}/password`,
+    { method: "POST", body: JSON.stringify({ password: password || undefined }) },
+  );
+}
+
+export type StaffActivity = {
+  _id: string;
+  staffUserId: string;
+  staffName: string;
+  staffRole: "admin" | "sales";
+  action: string;
+  summary: string;
+  targetUserId?: string;
+  targetLeadId?: string;
+  createdAt: string;
+};
+
+// What the sales team (and admin) have actually been doing — leads
+// worked, verification decisions, credentials issued, balances added,
+// SMS configured.
+export function fetchSalesActivity() {
+  return request<StaffActivity[]>("/admin/sales-activity");
 }
 
 export function listSalesLeads() {

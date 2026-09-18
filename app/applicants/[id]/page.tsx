@@ -49,6 +49,7 @@ import {
   UsageSummary,
   VerificationFormField,
 } from "@/lib/admin";
+import { openAuthedFile } from "@/lib/http";
 import { formatINR } from "@/lib/currency";
 import { VerificationBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -384,14 +385,17 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
                     </div>
                     {r.note && <p className="mt-0.5 text-xs text-ink-soft">{r.note}</p>}
                     {r.file ? (
-                      <a
-                        href={documentRequestFileUrl(id, r._id)}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openAuthedFile(documentRequestFileUrl(id, r._id)).catch((err) =>
+                            alert(err instanceof Error ? err.message : "Could not open file."),
+                          )
+                        }
                         className="mt-1.5 flex items-center gap-1.5 text-xs text-accent hover:underline"
                       >
                         <FileText size={11} /> {r.file.fileName}
-                      </a>
+                      </button>
                     ) : (
                       <button
                         onClick={() => handleCancelRequest(r._id)}
@@ -520,19 +524,22 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
                   <p className="mb-1.5 text-xs font-medium text-ink-muted">Documents</p>
                   <div className="flex flex-col gap-1.5">
                     {verification.documents.map((doc) => (
-                      <a
+                      <button
+                        type="button"
                         key={doc.storedFileName}
-                        href={documentUrl(id, doc.storedFileName)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 rounded-lg border border-line bg-cream px-3 py-2 text-sm text-ink transition-colors hover:border-accent hover:text-accent"
+                        onClick={() =>
+                          openAuthedFile(documentUrl(id, doc.storedFileName)).catch((err) =>
+                            alert(err instanceof Error ? err.message : "Could not open file."),
+                          )
+                        }
+                        className="flex w-full items-center gap-2 rounded-lg border border-line bg-cream px-3 py-2 text-left text-sm text-ink transition-colors hover:border-accent hover:text-accent"
                       >
                         <FileText size={14} className="shrink-0 text-ink-muted" />
                         <span className="min-w-0 flex-1 truncate">{doc.fileName}</span>
                         <span className="shrink-0 text-xs capitalize text-ink-muted">
                           {doc.type.replace(/([A-Z])/g, " $1")} · {formatBytes(doc.sizeBytes)}
                         </span>
-                      </a>
+                      </button>
                     ))}
                   </div>
                 </div>

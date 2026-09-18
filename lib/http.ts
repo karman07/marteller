@@ -59,3 +59,30 @@ export async function requestForm<T>(path: string, formData: FormData, method = 
   const text = await res.text();
   return (text ? JSON.parse(text) : null) as T;
 }
+
+// A plain `<a href>` navigation never sends the Authorization header (the
+// JWT lives in localStorage, not a cookie), so every protected download
+// route just 401s on click. Opens a blank tab synchronously (so it isn't
+// blocked as a popup — browsers only allow window.open() without a popup
+// warning within the same tick as the click, not after an await), then
+// fetches the file WITH auth and redirects that tab to the resulting blob.
+export async function openAuthedFile(url: string) {
+  const win = window.open("", "_blank");
+  try {
+    const token = getToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new Error(await parseErrorBody(res));
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    if (win) {
+      win.location.href = objectUrl;
+    } else {
+      window.open(objectUrl, "_blank");
+    }
+  } catch (err) {
+    win?.close();
+    throw err;
+  }
+}
