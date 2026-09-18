@@ -75,14 +75,19 @@ export class VerificationService {
 
   async findByUserId(userId: string) {
     const record = await this.model.findOne({ userId }).exec();
-    return (
-      record ?? {
+    if (!record) {
+      return {
         userId,
         status: 'not_submitted' as const,
         documents: [],
         fieldValues: {},
-      }
-    );
+      };
+    }
+    // Defends against records from before `fieldValues` existed on this
+    // schema (older submissions stored fields as flat top-level props) —
+    // doesn't persist, just guarantees every caller gets an object here.
+    if (!record.fieldValues) record.fieldValues = {};
+    return record;
   }
 
   async listFields() {
