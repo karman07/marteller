@@ -127,6 +127,18 @@ export function fetchUsage(userId: string) {
   return request<UsageSummary>(`/sales/applicants/${userId}/usage`);
 }
 
+// Sales crediting a customer's wallet directly — separate from Plan
+// (platform access fee); this is the pay-as-you-go balance that funds
+// messages beyond a plan's allowance. The customer can also do this
+// themselves from their own dashboard, or admin can via the identical
+// route on the admin app.
+export function addApplicantBalance(userId: string, amountPaise: number) {
+  return request<{ balancePaise: number }>(`/sales/applicants/${userId}/wallet/add-balance`, {
+    method: "POST",
+    body: JSON.stringify({ amountPaise }),
+  });
+}
+
 export type SmsRoute = "q" | "dlt";
 
 export type SmsCredential = {
