@@ -31,6 +31,61 @@ export class SalesService {
     private readonly messageModel: Model<MessageDocument>,
   ) {}
 
+  // The single, unified pipeline: everyone sales is working, whether
+  // they're still a pre-account lead or already a real customer, shown
+  // as one list sharing one set of stages (SalesStage/SalesLeadStatus are
+  // kept identical in shape for exactly this reason). A promoted lead
+  // stops appearing as a lead entry the moment it has a convertedUserId —
+  // from then on it's represented purely by its linked customer entry,
+  // so nobody ever sees the same person twice across two disconnected
+  // boards (which is exactly what "Leads" + "Applicants" used to do).
+  async listPipeline() {
+    const [leads, users] = await Promise.all([
+      this.salesLeadsService.list(),
+      this.usersService.listCustomers(),
+    ]);
+
+    const verifications = await Promise.all(
+      users.map((u) => this.verificationService.findByUserId(u.id)),
+    );
+
+    const leadEntries = leads
+      .filter((l) => !l.convertedUserId)
+      .map((l) => ({
+        kind: 'lead' as const,
+        id: (l._id as { toString(): string }).toString(),
+        name: l.name,
+        companyName: l.companyName ?? null,
+        email: l.email ?? null,
+        phone: l.phone ?? null,
+        source: l.source ?? null,
+        notes: l.notes ?? null,
+        stage: l.status,
+        assignedToUserId: l.assignedToUserId ?? null,
+        verificationStatus: null,
+        createdAt: l.createdAt,
+      }));
+
+    const customerEntries = users.map((u, i) => ({
+      kind: 'customer' as const,
+      id: u.id,
+      name: u.name || u.companyName || u.email || u.phoneNumber || 'Unnamed signup',
+      companyName: u.companyName ?? null,
+      email: u.email ?? null,
+      phone: u.phoneNumber ?? null,
+      source: null,
+      notes: null,
+      stage: u.salesStage,
+      assignedToUserId: null,
+      verificationStatus: verifications[i].status,
+      createdAt: u.createdAt,
+    }));
+
+    return [...leadEntries, ...customerEntries].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }
+
   async listApplicants() {
     const users = await this.usersService.listCustomers();
     const verifications = await Promise.all(
@@ -79,6 +134,8 @@ export class SalesService {
       new: 0,
       contacted: 0,
       qualified: 0,
+      negotiating: 0,
+      pending_verification: 0,
       converted: 0,
       lost: 0,
     };
@@ -170,13 +227,15 @@ export class SalesService {
       dto.reviewNote,
     );
 
-    // A sales-lead-originated user sits in 'pending_verification' until
-    // this exact moment — approving verification is what actually makes
-    // them a customer (see SalesLeadsService.promote()'s comment). Only
-    // touches leads that are actually in that state, so self-signups
-    // (no matching lead) and already-converted users are unaffected.
+    // Approving verification is what actually moves someone to
+    // 'converted' in the unified pipeline (see listPipeline()) — for both
+    // a lead-originated user (whose SalesLead also needs its own status
+    // flipped, since it's a separate record — see
+    // SalesLeadsService.promote()'s comment) and a self-signup (who has
+    // no SalesLead at all, just this one salesStage field).
     if (dto.status === 'verified') {
       await this.salesLeadsService.markConvertedIfPendingVerification(userId);
+      await this.usersService.updateSalesStage(userId, 'converted');
     }
 
     return record;

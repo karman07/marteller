@@ -12,11 +12,13 @@ import { HydratedDocument } from 'mongoose';
 // issuable — once that user's BusinessVerification is approved. See
 // SalesLeadsService.promote()/issueCredentials() and
 // SalesService.reviewVerification().
+// Kept deliberately identical in shape to User.SalesStage — a lead and a
+// customer share one unified pipeline (see SalesService.listPipeline()),
+// so the same stage names have to mean the same thing on both sides.
 export type SalesLeadStatus =
   | 'new'
   | 'contacted'
   | 'qualified'
-  | 'demo_scheduled'
   | 'negotiating'
   | 'pending_verification'
   | 'converted'
@@ -26,7 +28,6 @@ export const SALES_LEAD_STATUSES: SalesLeadStatus[] = [
   'new',
   'contacted',
   'qualified',
-  'demo_scheduled',
   'negotiating',
   'pending_verification',
   'converted',

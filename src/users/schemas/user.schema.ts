@@ -5,8 +5,22 @@ export type AccountType = 'individual' | 'business';
 export type CompanySize = '1-10' | '11-50' | '51-200' | '201-1000' | '1000+';
 export type Interest = 'whatsapp' | 'email' | 'sms' | 'otp';
 export type UserRole = 'customer' | 'sales' | 'admin';
+// Kept deliberately identical in shape to SalesLead.SalesLeadStatus — a
+// lead and a customer share one unified pipeline (see
+// SalesService.listPipeline()), so the same stage names have to mean the
+// same thing on both sides. 'pending_verification'/'converted' are also
+// kept in sync automatically with BusinessVerification's own status (see
+// VerificationService.submit()/SalesService.reviewVerification()) rather
+// than being purely manual — sales can still drag a card to any stage by
+// hand for the earlier, pre-verification part of the pipeline.
 export type SalesStage =
-  'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+  | 'new'
+  | 'contacted'
+  | 'qualified'
+  | 'negotiating'
+  | 'pending_verification'
+  | 'converted'
+  | 'lost';
 export type UserDocument = HydratedDocument<User>;
 
 export const COMPANY_SIZES: CompanySize[] = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
@@ -16,6 +30,8 @@ export const SALES_STAGES: SalesStage[] = [
   'new',
   'contacted',
   'qualified',
+  'negotiating',
+  'pending_verification',
   'converted',
   'lost',
 ];

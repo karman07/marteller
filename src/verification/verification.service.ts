@@ -19,7 +19,16 @@ import {
 import { DevReviewDto } from './dto/dev-review.dto';
 import { CreateFieldDto, UpdateFieldDto } from './dto/upsert-field.dto';
 import { UsersService } from '../users/users.service';
+import { SalesStage } from '../users/schemas/user.schema';
 import { SystemMailService } from '../mail-core/system-mail.service';
+
+// The part of the unified pipeline (see SalesService.listPipeline()) that
+// a customer moves through manually, before verification takes over —
+// used only to decide whether a fresh submission should auto-advance
+// someone's stage. 'lost' is deliberately excluded: if sales already
+// marked someone lost, a resubmission shouldn't silently pull them back
+// into the live pipeline without sales deciding that.
+const PRE_VERIFICATION_STAGES: SalesStage[] = ['new', 'contacted', 'qualified', 'negotiating'];
 
 // The starting form — seeded once when no fields exist yet, so submissions
 // keep working out of the box. The sales team can edit/remove/add to this
@@ -174,7 +183,7 @@ export class VerificationService {
       );
     }
 
-    return this.model
+    const record = await this.model
       .findOneAndUpdate(
         { userId },
         {
@@ -188,6 +197,19 @@ export class VerificationService {
         { upsert: true, new: true },
       )
       .exec();
+
+    // Auto-advance the unified pipeline stage so a submission actually
+    // surfaces where sales/admin will see it, rather than sitting wherever
+    // it happened to be dragged to (or the 'new' default, for a
+    // self-signup nobody ever moved). Only moves someone forward, never
+    // back — a lead-originated user already at 'pending_verification' or
+    // past it is untouched.
+    const user = await this.usersService.findById(userId);
+    if (user && PRE_VERIFICATION_STAGES.includes(user.salesStage)) {
+      await this.usersService.updateSalesStage(userId, 'pending_verification');
+    }
+
+    return record;
   }
 
   private isDevBypassEnabled(): boolean {

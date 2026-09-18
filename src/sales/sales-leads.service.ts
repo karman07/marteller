@@ -92,6 +92,11 @@ export class SalesLeadsService {
         companyName: lead.companyName,
       });
     }
+    // Carries the lead's own progress across to the linked account — the
+    // unified pipeline (see SalesService.listPipeline()) represents this
+    // person by their customer entry from here on, so without this their
+    // card would visibly jump back to 'new' the instant they're promoted.
+    await this.usersService.updateSalesStage(user.id, 'pending_verification');
 
     lead.status = 'pending_verification';
     lead.convertedUserId = user.id;

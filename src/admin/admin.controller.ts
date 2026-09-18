@@ -89,6 +89,14 @@ export class AdminController {
     return this.salesService.listApplicants();
   }
 
+  // The unified board — leads and customers together, one pipeline. This
+  // is what /applicants (both apps) actually renders now; listApplicants()
+  // above stays for anything that only ever wanted real accounts.
+  @Get('pipeline')
+  listPipeline() {
+    return this.salesService.listPipeline();
+  }
+
   @Get('stats')
   stats() {
     return this.salesService.stats();
