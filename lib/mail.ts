@@ -15,14 +15,9 @@ export type MailDomain = {
   updatedAt: string;
 };
 
-export type DnsRecord = { type: string; host: string; value: string; note?: string };
+export type DnsRecord = { label: string; type: string; host: string; value: string; note?: string };
 
-export type DomainDnsRecords = {
-  verification: DnsRecord;
-  dkim: DnsRecord;
-  spf: DnsRecord;
-  dmarc: DnsRecord;
-};
+export type DomainDnsRecords = { records: DnsRecord[] };
 
 export type MailCredentialStatus = "active" | "revoked";
 

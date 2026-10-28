@@ -3,6 +3,7 @@ import { Channel } from "@/lib/channels";
 import { SidebarGroup } from "./SidebarGroup";
 
 const SUB_TABS = [
+  { key: "analytics", label: "Analytics" },
   { key: "inbox", label: "Inbox" },
   { key: "logs", label: "Logs" },
   { key: "templates", label: "Templates" },

@@ -9,7 +9,7 @@ export function ChannelLayoutClient({ channel, children }: { channel: Channel; c
   return (
     <>
       <PageHeader title={channelLabel(channel)} />
-      <div className="px-8 py-6">{children}</div>
+      <div className="px-4 py-6 sm:px-8">{children}</div>
     </>
   );
 }

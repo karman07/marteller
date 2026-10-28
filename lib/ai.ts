@@ -15,7 +15,8 @@ export type AiModelId =
   | "deepseek-r1";
 export type AiProvider = "anthropic" | "openai" | "google" | "xai" | "deepseek";
 export type KeyMode = "own_key" | "managed_credits";
-export type DataSourceType = "file" | "text" | "url";
+// 'file' dropped — no upload/parsing infra exists.
+export type DataSourceType = "text" | "url";
 export type DataSourceStatus = "processing" | "ready";
 
 export type AiModel = {
@@ -37,6 +38,7 @@ export type DataSource = {
   _id: string;
   name: string;
   type: DataSourceType;
+  content: string;
   status: DataSourceStatus;
   addedAt: string;
 };
@@ -90,12 +92,22 @@ export function removeProviderApiKey(provider: AiProvider) {
   return request<AiConfig>(`/ai/keys/${provider}`, { method: "DELETE" });
 }
 
-export function addDataSource(name: string, type: DataSourceType) {
-  return request<AiConfig>("/ai/data-sources", { method: "POST", body: JSON.stringify({ name, type }) });
+// content: the text itself for type 'text'; the URL to fetch for type
+// 'url' (the backend fetches + strips it server-side and stores the real
+// resulting text — see AiService.addDataSource).
+export function addDataSource(name: string, type: DataSourceType, content: string) {
+  return request<AiConfig>("/ai/data-sources", { method: "POST", body: JSON.stringify({ name, type, content }) });
 }
 
 export function removeDataSource(id: string) {
   return request<AiConfig>(`/ai/data-sources/${id}`, { method: "DELETE" });
+}
+
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+export type ChatResult = { reply: string; toolsUsed: { tool: string; summary: string }[] };
+
+export function sendChatMessage(messages: ChatMessage[]) {
+  return request<ChatResult>("/ai/chat", { method: "POST", body: JSON.stringify({ messages }) });
 }
 
 export type AiQueryStatus = "resolved" | "escalated";

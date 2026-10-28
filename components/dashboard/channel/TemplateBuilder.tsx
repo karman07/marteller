@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ImageIcon, Loader2, Plus, Trash2, Type } from "lucide-react";
+import Link from "next/link";
+import { ImageIcon, Loader2, Plus, Sparkles, Trash2, Type } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Channel } from "@/lib/channels";
+import { Channel, channelLabel } from "@/lib/channels";
 import {
   CreateTemplatePayload,
   HeaderType,
@@ -14,6 +15,7 @@ import {
   TemplateButtonType,
   WHATSAPP_CATEGORIES,
   WhatsappCategory,
+  generateTemplate,
   templateAssetUrl,
   uploadTemplateImage,
 } from "@/lib/templates";
@@ -82,6 +84,9 @@ export function TemplateBuilder({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const headerRef = useRef<HTMLInputElement>(null);
 
@@ -122,6 +127,28 @@ export function TemplateBuilder({
     setButtons([]);
     setSampleValues({});
     setError(null);
+    setAiPrompt("");
+    setAiError(null);
+  }
+
+  async function handleGenerate() {
+    if (!aiPrompt.trim()) return;
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      const draft = await generateTemplate(channel, aiPrompt.trim());
+      setName(draft.name);
+      setBody(draft.body);
+      if (channel === "email") setSubject(draft.subject ?? "");
+      if (channel === "whatsapp") {
+        setCategory(draft.category ?? "utility");
+        setFooter(draft.footer ?? "");
+      }
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Could not generate a template.");
+    } finally {
+      setAiGenerating(false);
+    }
   }
 
   async function handleUpload(file: File, target: "header" | "banner") {
@@ -204,6 +231,46 @@ export function TemplateBuilder({
         <div className="flex flex-col gap-3">
           {error && (
             <p className="rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{error}</p>
+          )}
+
+          {!editingTemplate && (
+            <div className="flex flex-col gap-2 rounded-xl border border-dashed border-line bg-cream-secondary/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-ink-soft">
+                <Sparkles size={13} className="text-accent" />
+                Create with AI
+              </div>
+              {aiError && <p className="text-xs text-accent">{aiError}</p>}
+              <div className="flex gap-2">
+                <input
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !aiGenerating) {
+                      e.preventDefault();
+                      handleGenerate();
+                    }
+                  }}
+                  placeholder={`Describe the ${channelLabel(channel)} message you want…`}
+                  className="h-9 flex-1 rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={aiGenerating || !aiPrompt.trim()}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium text-ink-soft transition-colors hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {aiGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  Generate
+                </button>
+              </div>
+              <p className="text-[11px] text-ink-muted">
+                Uses your AI generation allowance — needs a model + API key set in{" "}
+                <Link href="/dashboard/ai-assistant/model" className="underline hover:no-underline">
+                  AI Assistant → Model
+                </Link>
+                .
+              </p>
+            </div>
           )}
 
           <input

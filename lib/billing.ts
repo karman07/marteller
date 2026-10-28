@@ -1,6 +1,6 @@
 import { request } from "./http";
 
-export type MessageLimits = { whatsapp: number; email: number; sms: number };
+export type MessageLimits = { whatsapp: number; email: number; sms: number; ai: number };
 
 export type Plan = {
   _id: string;
@@ -56,5 +56,14 @@ export function cancelSubscription(immediately: boolean) {
   return request<Subscription>("/billing/cancel", {
     method: "POST",
     body: JSON.stringify({ immediately }),
+  });
+}
+
+// Dev-only: substitutes for the Razorpay webhook confirmation, which can
+// never reach a local dev backend (no public URL). Only reachable when the
+// backend's own DEV_PHONE_AUTH_BYPASS gate is on.
+export function devConfirmSubscription() {
+  return request<{ subscription: Subscription; plan: Plan }>("/billing/dev-confirm-subscription", {
+    method: "POST",
   });
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Send, CheckCheck, Receipt, BarChart3, Inbox, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/PageHeader";
+import { LimitsSummary } from "@/components/dashboard/LimitsSummary";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { MessagesTrendChart } from "@/components/dashboard/MessagesTrendChart";
@@ -86,7 +87,11 @@ export default function OverviewPage() {
         }
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 py-6 sm:px-8">
+        <div className="mb-4">
+          <LimitsSummary />
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-3">
           <StatTile
             label={`Messages sent (${days}d)`}

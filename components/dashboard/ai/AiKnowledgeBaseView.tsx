@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Database, File, FileText, Link2, Search, Trash2 } from "lucide-react";
+import { Database, FileText, Link2, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { StatTile } from "@/components/dashboard/StatTile";
@@ -16,7 +16,6 @@ import {
 
 const TYPE_META: Record<DataSourceType, { label: string; icon: typeof FileText }> = {
   text: { label: "Text", icon: FileText },
-  file: { label: "File", icon: File },
   url: { label: "URL", icon: Link2 },
 };
 
@@ -28,7 +27,9 @@ export function AiKnowledgeBaseView() {
   const [config, setConfig] = useState<AiConfig | null>(null);
   const [sourceName, setSourceName] = useState("");
   const [sourceType, setSourceType] = useState<DataSourceType>("text");
+  const [sourceContent, setSourceContent] = useState("");
   const [addingSource, setAddingSource] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -36,12 +37,16 @@ export function AiKnowledgeBaseView() {
   }, []);
 
   async function handleAddSource() {
-    if (!sourceName.trim()) return;
+    if (!sourceName.trim() || !sourceContent.trim()) return;
     setAddingSource(true);
+    setAddError(null);
     try {
-      const updated = await addDataSource(sourceName.trim(), sourceType);
+      const updated = await addDataSource(sourceName.trim(), sourceType, sourceContent.trim());
       setConfig(updated);
       setSourceName("");
+      setSourceContent("");
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Could not add that source.");
     } finally {
       setAddingSource(false);
     }
@@ -67,7 +72,8 @@ export function AiKnowledgeBaseView() {
       <div>
         <h2 className="mb-1 text-sm font-semibold text-ink">Knowledge base</h2>
         <p className="text-xs text-ink-soft">
-          Add text, files, or URLs — the assistant retrieves from these before every reply (RAG), so
+          Add text or a URL — the assistant searches these for relevant excerpts before every reply and
+          every chat message (lightweight keyword-based retrieval, not a full semantic search), so
           answers stay grounded in your own information instead of guesswork.
         </p>
       </div>
@@ -80,23 +86,46 @@ export function AiKnowledgeBaseView() {
 
       <div className="rounded-2xl border border-line bg-surface-2 p-5">
         <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-muted">Add a source</p>
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={sourceName}
-            onChange={(e) => setSourceName(e.target.value)}
-            placeholder="Data source name"
-            className="h-10 min-w-[200px] flex-1 rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
-          />
-          <select
-            value={sourceType}
-            onChange={(e) => setSourceType(e.target.value as DataSourceType)}
-            className="h-10 rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
-          >
-            <option value="text">Text</option>
-            <option value="file">File</option>
-            <option value="url">URL</option>
-          </select>
-          <Button onClick={handleAddSource} disabled={addingSource}>
+        {addError && (
+          <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-accent">{addError}</p>
+        )}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <input
+              value={sourceName}
+              onChange={(e) => setSourceName(e.target.value)}
+              placeholder="Data source name"
+              className="h-10 min-w-[200px] flex-1 rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+            />
+            <select
+              value={sourceType}
+              onChange={(e) => {
+                setSourceType(e.target.value as DataSourceType);
+                setSourceContent("");
+              }}
+              className="h-10 rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+            >
+              <option value="text">Text</option>
+              <option value="url">URL</option>
+            </select>
+          </div>
+          {sourceType === "text" ? (
+            <textarea
+              value={sourceContent}
+              onChange={(e) => setSourceContent(e.target.value)}
+              placeholder="Paste the text content to make searchable…"
+              rows={3}
+              className="w-full rounded-xl border border-line bg-cream px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
+            />
+          ) : (
+            <input
+              value={sourceContent}
+              onChange={(e) => setSourceContent(e.target.value)}
+              placeholder="https://example.com/faq"
+              className="h-10 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
+            />
+          )}
+          <Button onClick={handleAddSource} disabled={addingSource || !sourceName.trim() || !sourceContent.trim()} className="self-start">
             {addingSource ? "Adding…" : "Add"}
           </Button>
         </div>
@@ -118,7 +147,7 @@ export function AiKnowledgeBaseView() {
         <EmptyState
           icon={Database}
           title="No knowledge base connected yet"
-          description="Add text, files, or a URL so the assistant can answer using your own information."
+          description="Add text or a URL so the assistant can answer using your own information."
         />
       ) : visibleSources.length === 0 ? (
         <p className="py-8 text-center text-sm text-ink-muted">No sources match “{search}”.</p>

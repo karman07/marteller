@@ -131,12 +131,7 @@ export default function EmailDomainsPage() {
   }
 
   const dnsRows: { key: string; label: string; record: DnsRecord }[] = dnsRecords
-    ? [
-        { key: "verification", label: "Verification", record: dnsRecords.verification },
-        { key: "dkim", label: "DKIM", record: dnsRecords.dkim },
-        { key: "spf", label: "SPF", record: dnsRecords.spf },
-        { key: "dmarc", label: "DMARC", record: dnsRecords.dmarc },
-      ]
+    ? dnsRecords.records.map((record, i) => ({ key: `${i}`, label: record.label, record }))
     : [];
 
   return (
@@ -270,10 +265,10 @@ export default function EmailDomainsPage() {
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-ink-soft">
-            Add these as TXT records at your DNS provider, then come back and hit Verify.
+            Add these records at your DNS provider, then come back and hit Verify.
           </p>
           {!dnsRecords ? (
-            <p className="text-sm text-ink-muted">Loading…</p>
+            <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
           ) : (
             <div className="flex flex-col gap-3">
               {dnsRows.map(({ key, label, record }) => (

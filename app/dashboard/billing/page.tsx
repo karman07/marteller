@@ -10,11 +10,20 @@ import { ApiKeysSection } from "@/components/dashboard/ApiKeysSection";
 import { SubscriptionSection } from "@/components/dashboard/SubscriptionSection";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { WalletTransaction, addBalance, fetchBalance, fetchTransactions } from "@/lib/wallet";
+import {
+  WalletTransaction,
+  createTopupOrder,
+  devAddBalance,
+  fetchBalance,
+  fetchTransactions,
+  verifyTopupPayment,
+} from "@/lib/wallet";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import { formatINR } from "@/lib/currency";
 
 const PRESETS_PAISE = [50000, 100000, 500000]; // ₹500 / ₹1,000 / ₹5,000
 const TX_PAGE_SIZE = 10;
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_PHONE_BYPASS === "true";
 
 export default function BillingPage() {
   const searchParams = useSearchParams();
@@ -28,6 +37,7 @@ export default function BillingPage() {
   const [amount, setAmount] = useState<number>(PRESETS_PAISE[0]);
   const [customAmount, setCustomAmount] = useState("");
   const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   function loadTransactions(page: number) {
     fetchTransactions(page, TX_PAGE_SIZE)
@@ -46,15 +56,72 @@ export default function BillingPage() {
     if (searchParams.get("addBalance") === "true") setAddOpen(true);
   }, [searchParams]);
 
+  function pickedAmount() {
+    return customAmount ? Math.round(parseFloat(customAmount) * 100) : amount;
+  }
+
+  // Real top-up: create a Razorpay order, open Checkout, then verify the
+  // signature server-side before the wallet is credited — same pattern as
+  // SubscriptionSection's subscribe flow, just a one-time order instead of
+  // a recurring subscription.
   async function handleAddBalance() {
-    const finalAmount = customAmount ? Math.round(parseFloat(customAmount) * 100) : amount;
+    const finalAmount = pickedAmount();
     if (!finalAmount || finalAmount <= 0) return;
+    setAddError(null);
     setAdding(true);
     try {
-      await addBalance(finalAmount);
+      const order = await createTopupOrder(finalAmount);
+      const scriptLoaded = await loadRazorpayScript();
+      if (!scriptLoaded || !window.Razorpay) {
+        throw new Error("Could not load the payment gateway. Check your connection and try again.");
+      }
+
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "Marteller",
+        description: "Credits top-up",
+        theme: { color: "#d96a36" },
+        handler: async (response) => {
+          try {
+            await verifyTopupPayment(
+              response.razorpay_order_id ?? order.orderId,
+              response.razorpay_payment_id ?? "",
+              response.razorpay_signature ?? "",
+            );
+            setAddOpen(false);
+            setCustomAmount("");
+            load();
+          } catch (err) {
+            setAddError(err instanceof Error ? err.message : "Could not verify payment.");
+          } finally {
+            setAdding(false);
+          }
+        },
+        modal: { ondismiss: () => setAdding(false) },
+      });
+      checkout.open();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Could not start payment.");
+      setAdding(false);
+    }
+  }
+
+  // Dev-only instant credit, no payment — see lib/wallet.ts's devAddBalance.
+  async function handleDevAddBalance() {
+    const finalAmount = pickedAmount();
+    if (!finalAmount || finalAmount <= 0) return;
+    setAddError(null);
+    setAdding(true);
+    try {
+      await devAddBalance(finalAmount);
       setAddOpen(false);
       setCustomAmount("");
       load();
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Could not add test credit.");
     } finally {
       setAdding(false);
     }
@@ -64,24 +131,25 @@ export default function BillingPage() {
     <>
       <PageHeader
         title="Billing & usage"
-        description="Your wallet balance, top-ups, and message spend — in one place."
+        description="Your plan allowance, credits, and message spend — in one place."
         action={
           <Button onClick={() => setAddOpen(true)} className="gap-1.5">
-            <Wallet size={15} /> Add balance
+            <Wallet size={15} /> Add credits
           </Button>
         }
       />
 
-      <div className="px-8 py-6">
+      <div className="px-4 py-6 sm:px-8">
         <SubscriptionSection />
 
         <div className="mt-6 rounded-2xl border border-line bg-surface-2 p-6">
-          <p className="text-xs text-ink-muted">Wallet balance</p>
+          <p className="text-xs text-ink-muted">Credits</p>
           <p className="mt-1 text-3xl font-semibold text-ink">
             {balancePaise === null ? "—" : formatINR(balancePaise)}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
-            Covers messages beyond your plan&apos;s monthly allowance. Test balance — no real payment gateway connected yet.
+            A separate pool from your plan&apos;s monthly allowance — covers any channel once that
+            allowance runs out, and never expires at the end of the period.
           </p>
         </div>
 
@@ -146,11 +214,12 @@ export default function BillingPage() {
         </div>
       </div>
 
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add balance">
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add credits">
         <div className="flex flex-col gap-4">
-          <p className="text-xs text-ink-muted">
-            Test top-up — instantly credited, no real payment is charged.
-          </p>
+          <p className="text-xs text-ink-muted">Paid securely via Razorpay.</p>
+          {addError && (
+            <p className="rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{addError}</p>
+          )}
           <div className="grid grid-cols-3 gap-2">
             {PRESETS_PAISE.map((p) => (
               <button
@@ -178,8 +247,18 @@ export default function BillingPage() {
             className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
           />
           <Button onClick={handleAddBalance} disabled={adding} className="w-full">
-            {adding ? "Adding…" : "Add balance"}
+            {adding ? "Processing…" : "Add credits"}
           </Button>
+          {DEV_BYPASS && (
+            <button
+              type="button"
+              onClick={handleDevAddBalance}
+              disabled={adding}
+              className="text-center text-xs text-ink-muted underline hover:text-ink disabled:pointer-events-none"
+            >
+              Dev: instant test credit (no payment)
+            </button>
+          )}
         </div>
       </Modal>
     </>

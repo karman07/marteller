@@ -9,7 +9,6 @@ import { Channel } from "@/lib/channels";
 import { MessageLog, listMessages } from "@/lib/messages";
 import { formatINR } from "@/lib/currency";
 import { promoteMessageToLead } from "@/lib/leads";
-import { ChannelStatsHeader } from "./ChannelStatsHeader";
 
 const LOGS_PAGE_SIZE = 15;
 
@@ -47,8 +46,6 @@ export function ChannelLogsView({ channel }: { channel: Channel }) {
 
   return (
     <>
-      <ChannelStatsHeader channel={channel} />
-
       {logs.items.length === 0 ? (
         <EmptyState icon={SendIcon} title="No messages sent yet" />
       ) : (

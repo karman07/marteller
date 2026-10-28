@@ -128,10 +128,10 @@ export function ChannelStatsHeader({ channel }: { channel: Channel }) {
           )}
         </div>
 
-        <div className="rounded-2xl border border-line bg-surface-2 p-5">
-          <h2 className="mb-4 text-sm font-semibold text-ink">Delivery status</h2>
+        <div className="flex flex-col rounded-2xl border border-line bg-surface-2 p-5">
+          <h2 className="mb-4 shrink-0 text-sm font-semibold text-ink">Delivery status</h2>
           {statusTotal > 0 ? (
-            <div className="flex h-full flex-col justify-center gap-4">
+            <div className="flex flex-1 flex-col justify-center gap-4">
               <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full bg-cream-secondary">
                 {statusSegments.map((s) => (
                   <div

@@ -68,6 +68,24 @@ export function listTemplates(channel: Channel, category?: WhatsappCategory) {
   return request<Template[]>(`/templates?${params.toString()}`);
 }
 
+export type GeneratedTemplate = {
+  name: string;
+  body: string;
+  subject?: string;
+  category?: WhatsappCategory;
+  footer?: string;
+};
+
+// Drafts a template from a prompt — doesn't save it, consumes this
+// account's AI generation allowance (see Billing & usage's "AI
+// generations" bar).
+export function generateTemplate(channel: Channel, prompt: string) {
+  return request<GeneratedTemplate>("/templates/generate", {
+    method: "POST",
+    body: JSON.stringify({ channel, prompt }),
+  });
+}
+
 export function createTemplate(payload: CreateTemplatePayload) {
   return request<Template>("/templates", { method: "POST", body: JSON.stringify(payload) });
 }
@@ -84,4 +102,19 @@ export function uploadTemplateImage(file: File) {
   const formData = new FormData();
   formData.append("image", file);
   return requestForm<{ url: string }>("/templates/upload-image", formData);
+}
+
+export type WhatsappApprovalStatus = {
+  status: "pending" | "approved" | "rejected";
+  rejectionReason: string | null;
+};
+
+// Per-tenant WhatsApp template approval status — separate from the
+// Template document itself (see the backend WhatsAppTemplateMapping
+// schema comment): a shared/system template has no single correct status,
+// since every tenant's own provider account approves "the same" template
+// separately. Staff-handled behind the scenes — this is read-only, there's
+// nothing for a tenant to set up.
+export function fetchWhatsappApprovalStatuses() {
+  return request<Record<string, WhatsappApprovalStatus>>("/templates/whatsapp-approval-status");
 }

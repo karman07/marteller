@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Check, FlaskConical, Inbox as InboxIcon, Loader2, Send, X } from "lucide-react";
+import { Bot, Check, FlaskConical, Inbox as InboxIcon, Loader2, Send, User, X } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Channel } from "@/lib/channels";
 import {
@@ -225,10 +225,13 @@ export function ChannelInboxView({ channel }: { channel: Channel }) {
               <button
                 key={t.contact}
                 onClick={() => setSelectedContact(t.contact)}
-                className={`flex w-full items-start gap-2.5 border-b border-line/60 px-4 py-3 text-left transition-colors ${
+                className={`flex w-full items-center gap-2.5 border-b border-line/60 px-4 py-3 text-left transition-colors ${
                   active ? "bg-accent-soft/30" : "hover:bg-cream-secondary"
                 }`}
               >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft/40 text-accent">
+                  <User size={15} />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-sm font-medium text-ink">{t.contact}</p>
@@ -252,14 +255,19 @@ export function ChannelInboxView({ channel }: { channel: Channel }) {
         ) : (
           <>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-surface-2 px-6 py-3.5">
-              <p className="text-sm font-semibold text-ink">{conversation.contact}</p>
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft/40 text-accent">
+                  <User size={14} />
+                </span>
+                <p className="text-sm font-semibold text-ink">{conversation.contact}</p>
+              </div>
               {conversation.isDummyData && (
                 <span className="flex items-center gap-1 rounded-full bg-cream-secondary px-2 py-0.5 text-[10px] font-medium text-ink-muted">
                   <FlaskConical size={10} /> Sample
                 </span>
               )}
             </div>
-            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-6 py-5">
+            <div className="flex flex-1 flex-col justify-end gap-3 overflow-y-auto px-6 py-5">
               {conversation.items.length === 0 ? (
                 <p className="text-sm text-ink-muted">No messages in this conversation.</p>
               ) : (

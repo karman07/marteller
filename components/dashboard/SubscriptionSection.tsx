@@ -9,41 +9,14 @@ import {
   Plan,
   Subscription,
   cancelSubscription,
+  devConfirmSubscription,
   fetchMySubscription,
   fetchPlans,
   startSubscribe,
 } from "@/lib/billing";
+import { loadRazorpayScript } from "@/lib/razorpay";
 
-type RazorpayCheckoutOptions = {
-  key: string;
-  subscription_id: string;
-  name: string;
-  description?: string;
-  prefill?: { name?: string; email?: string; contact?: string };
-  theme?: { color?: string };
-  handler?: (response: unknown) => void;
-  modal?: { ondismiss?: () => void };
-};
-
-type RazorpayCheckoutInstance = { open: () => void };
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
-  }
-}
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined") return resolve(false);
-    if (window.Razorpay) return resolve(true);
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_PHONE_BYPASS === "true";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,9 +26,17 @@ const CHANNEL_LABELS: Record<keyof Plan["messageLimits"], string> = {
   whatsapp: "WhatsApp",
   email: "Email",
   sms: "SMS",
+  ai: "AI generations",
 };
 
-export function SubscriptionSection() {
+// onStatusChange: lets a parent gate (PlanGate/DashboardShell) stay in sync
+// without waiting for a full page refresh — fires every time fresh
+// subscription data loads, with the status string or null if there's none.
+export function SubscriptionSection({
+  onStatusChange,
+}: {
+  onStatusChange?: (status: string | null) => void;
+} = {}) {
   const { user } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [current, setCurrent] = useState<{ subscription: Subscription; plan: Plan } | null>(null);
@@ -64,15 +45,24 @@ export function SubscriptionSection() {
   const [confirming, setConfirming] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Independent fetches, not Promise.all — a transient failure on one
+  // (e.g. the backend restarting mid-request) shouldn't blank out the
+  // other and silently render as "no plans available" when it's actually
+  // a fetch failure, not an empty plan list.
   function load() {
-    Promise.all([fetchPlans(), fetchMySubscription()])
-      .then(([planList, subscription]) => {
-        setPlans(planList);
+    setLoadError(null);
+    fetchPlans()
+      .then(setPlans)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Could not load plans."))
+      .finally(() => setLoaded(true));
+    fetchMySubscription()
+      .then((subscription) => {
         setCurrent(subscription);
-        setLoaded(true);
+        onStatusChange?.(subscription?.subscription.status ?? null);
       })
-      .catch(() => setLoaded(true));
+      .catch(() => {});
   }
 
   useEffect(load, []);
@@ -81,7 +71,10 @@ export function SubscriptionSection() {
   // client-side, but our own Subscription doc only flips to
   // active/authenticated once the webhook lands (see
   // SubscriptionsService.processWebhookEvent on the backend) — so poll
-  // briefly rather than trusting the client-side callback alone.
+  // briefly rather than trusting the client-side callback alone. In dev,
+  // the webhook can never reach a local backend (no public URL), so after
+  // one empty poll, substitute the dev-only confirm endpoint instead of
+  // waiting out the rest of the loop.
   async function pollForConfirmation() {
     setConfirming(true);
     for (let i = 0; i < 6; i++) {
@@ -90,6 +83,11 @@ export function SubscriptionSection() {
         const subscription = await fetchMySubscription();
         if (subscription && subscription.subscription.status !== "created") {
           setCurrent(subscription);
+          break;
+        }
+        if (i === 0 && DEV_BYPASS) {
+          const confirmed = await devConfirmSubscription();
+          setCurrent(confirmed);
           break;
         }
       } catch {
@@ -179,9 +177,11 @@ export function SubscriptionSection() {
           )}
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(Object.keys(CHANNEL_LABELS) as (keyof Plan["messageLimits"])[]).map((channel) => {
-            const limit = plan.messageLimits[channel];
+            // Legacy plans created before the AI dimension existed won't
+            // have this key in Mongo at all.
+            const limit = plan.messageLimits[channel] ?? 0;
             const used = subscription.messagesUsedThisPeriod[channel] ?? 0;
             const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
             return (
@@ -207,11 +207,19 @@ export function SubscriptionSection() {
     <div className="rounded-2xl border border-line bg-surface-2 p-6">
       <p className="text-sm font-semibold text-ink">Choose a plan</p>
       <p className="mt-1 text-xs text-ink-muted">
-        A monthly message allowance per channel — usage beyond it draws from your wallet below.
+        A monthly message allowance per channel, included free with your plan — usage beyond it draws
+        from your credits instead (see Billing &amp; usage below).
       </p>
       {error && <p className="mt-3 rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{error}</p>}
 
-      {plans.length === 0 ? (
+      {loadError ? (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">
+          <span>Couldn&apos;t load plans — {loadError}</span>
+          <button onClick={load} className="shrink-0 font-medium underline hover:no-underline">
+            Retry
+          </button>
+        </div>
+      ) : plans.length === 0 ? (
         <p className="mt-4 text-sm text-ink-muted">No plans available right now.</p>
       ) : (
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -228,6 +236,7 @@ export function SubscriptionSection() {
                   <span>{plan.messageLimits.whatsapp} WhatsApp</span>
                   <span>{plan.messageLimits.email} Email</span>
                   <span>{plan.messageLimits.sms} SMS</span>
+                  <span>{plan.messageLimits.ai ?? 0} AI generations</span>
                 </div>
                 {plan.features.length > 0 && (
                   <ul className="mt-3 flex-1 space-y-1.5">

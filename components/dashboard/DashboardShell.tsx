@@ -20,7 +20,10 @@ import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { BusinessVerification, fetchVerification } from "@/lib/verification";
+import { fetchMySubscription } from "@/lib/billing";
 import { VerificationGate } from "./VerificationGate";
+import { PlanGate } from "./PlanGate";
+import { AiChatWidget } from "./ai/AiChatWidget";
 import { SidebarChannelGroup } from "./SidebarChannelGroup";
 import { SidebarGroup } from "./SidebarGroup";
 
@@ -54,6 +57,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [verification, setVerification] = useState<BusinessVerification | null>(null);
+  // undefined = not fetched yet, null = fetched, no subscription at all.
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -64,10 +69,13 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) {
       fetchVerification().then(setVerification).catch(() => {});
+      fetchMySubscription()
+        .then((res) => setSubscriptionStatus(res?.subscription.status ?? null))
+        .catch(() => setSubscriptionStatus(null));
     }
   }, [user]);
 
-  if (loading || !user || !verification) {
+  if (loading || !user || !verification || subscriptionStatus === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-cream text-ink-soft">
         Loading…
@@ -76,6 +84,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }
 
   const verified = verification.status === "verified";
+  // "created" means checkout was started but never paid — that must not
+  // satisfy the gate (same status check SubscriptionSection's own
+  // post-checkout polling already uses for "genuinely confirmed").
+  const hasPaidPlan = subscriptionStatus !== null && subscriptionStatus !== "created";
 
   function NavLink({ href, label, icon: Icon }: { href: string; label: string; icon: typeof Users }) {
     const active = href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
@@ -145,6 +157,8 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <main className="h-screen min-w-0 flex-1 overflow-y-auto">{children}</main>
 
       {!verified && <VerificationGate record={verification} onUpdated={setVerification} />}
+      {verified && !hasPaidPlan && <PlanGate onStatusChange={setSubscriptionStatus} />}
+      {verified && hasPaidPlan && <AiChatWidget />}
     </div>
   );
 }

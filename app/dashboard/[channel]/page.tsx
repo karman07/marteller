@@ -8,5 +8,5 @@ export default async function ChannelIndexPage({
 }) {
   const { channel } = await params;
   if (!isChannel(channel)) redirect("/dashboard");
-  redirect(`/dashboard/${channel}/logs`);
+  redirect(`/dashboard/${channel}/analytics`);
 }
