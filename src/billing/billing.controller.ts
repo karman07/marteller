@@ -51,6 +51,13 @@ export class BillingController {
     return this.subscriptionsService.cancel(req.userId, dto.immediately ?? false);
   }
 
+  // Dev-only — see SubscriptionsService.devConfirmSubscription.
+  @UseGuards(JwtAuthGuard)
+  @Post('dev-confirm-subscription')
+  devConfirmSubscription(@Req() req: Request & { userId: string }) {
+    return this.subscriptionsService.devConfirmSubscription(req.userId);
+  }
+
   // Razorpay calls this directly — no JwtAuthGuard, authenticity is
   // established purely by the HMAC signature below, verified against the
   // exact raw request bytes (see main.ts's rawBody:true app option and

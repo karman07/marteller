@@ -23,6 +23,6 @@ import { BillingController } from './billing.controller';
   ],
   controllers: [BillingController],
   providers: [PlansService, RazorpayService, SubscriptionsService, PlanEnforcementService],
-  exports: [PlansService, SubscriptionsService, PlanEnforcementService],
+  exports: [PlansService, RazorpayService, SubscriptionsService, PlanEnforcementService],
 })
 export class BillingModule {}

@@ -5,6 +5,10 @@ export type PlanMessageLimits = {
   whatsapp: number;
   email: number;
   sms: number;
+  // AI auto-reply count cap — unlike the other three, this never overflows
+  // to wallet billing (see PlanEnforcementService/AiReplyService): once
+  // exhausted, AI auto-replies simply stop for the rest of the period.
+  ai: number;
 };
 
 export type PlanDocument = HydratedDocument<Plan>;

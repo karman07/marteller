@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UsersService } from '../users/users.service';
@@ -9,12 +9,15 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { SalesStage } from '../users/schemas/user.schema';
 import { ReviewApplicationDto } from './dto/review-application.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { ReviewWhatsappTemplateApprovalDto } from './dto/review-whatsapp-template-approval.dto';
 import { SalesLeadsService } from './sales-leads.service';
 import { VerificationDocument } from '../verification/schemas/business-verification.schema';
 import {
   CreateFieldDto,
   UpdateFieldDto,
 } from '../verification/dto/upsert-field.dto';
+import { WhatsAppTemplateMappingService } from '../whatsapp-credentials/whatsapp-template-mapping.service';
+import { TemplatesService } from '../templates/templates.service';
 
 @Injectable()
 export class SalesService {
@@ -24,6 +27,8 @@ export class SalesService {
     private readonly walletService: WalletService,
     private readonly leadsService: LeadsService,
     private readonly salesLeadsService: SalesLeadsService,
+    private readonly whatsappTemplateMappingService: WhatsAppTemplateMappingService,
+    private readonly templatesService: TemplatesService,
     // Direct model access, same reasoning as elsewhere in this codebase —
     // reading a usage summary doesn't need the full MessagesModule
     // (wallet/verification/provider wiring it pulls in for sending).
@@ -288,5 +293,61 @@ export class SalesService {
 
   reorderFormFields(orderedIds: string[]) {
     return this.verificationService.reorderFields(orderedIds);
+  }
+
+  // The staff-facing queue of WhatsApp templates awaiting approval, across
+  // every tenant. Most rows here were already auto-submitted to the
+  // provider by WhatsAppTemplateSubmissionService and just need the
+  // periodic poll to catch up — autoSubmitted tells the staff UI to show
+  // that instead of asking for a manual message id. Rows without it are
+  // ones auto-submission couldn't handle (no WABA id yet, an image
+  // header, or the call failed) and genuinely need a human to register
+  // the template and enter the id themselves.
+  async listWhatsappTemplateApprovals() {
+    const pending = await this.whatsappTemplateMappingService.listPendingQueue();
+    const enriched = await Promise.all(
+      pending.map(async (m) => {
+        const [user, template] = await Promise.all([
+          this.usersService.findById(m.userId),
+          this.templatesService.findOne(m.userId, m.templateId).catch(() => null),
+        ]);
+        return {
+          userId: m.userId,
+          tenantName:
+            user?.name || user?.companyName || user?.email || user?.phoneNumber || 'Unknown account',
+          templateId: m.templateId,
+          templateName: template?.name ?? '(template deleted)',
+          templateBody: template?.body ?? '',
+          autoSubmitted: Boolean(m.providerTemplateId),
+          submittedAt: m.createdAt,
+        };
+      }),
+    );
+    return enriched;
+  }
+
+  reviewWhatsappTemplateApproval(
+    targetUserId: string,
+    templateId: string,
+    dto: ReviewWhatsappTemplateApprovalDto,
+    reviewedByUserId: string,
+  ) {
+    if (dto.status === 'approved') {
+      if (!dto.providerMessageId) {
+        throw new BadRequestException('A message id is required to approve this template');
+      }
+      return this.whatsappTemplateMappingService.approve(
+        targetUserId,
+        templateId,
+        dto.providerMessageId,
+        reviewedByUserId,
+      );
+    }
+    return this.whatsappTemplateMappingService.reject(
+      targetUserId,
+      templateId,
+      dto.rejectionReason ?? 'Not approved',
+      reviewedByUserId,
+    );
   }
 }

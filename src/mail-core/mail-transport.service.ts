@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import nodemailer, { Transporter } from 'nodemailer';
+import { promises as fs } from 'fs';
 import type { DkimForSend } from './mail-domains.service';
+import { ResendService } from './resend.service';
 
 export type OutboundMailParams = {
   from: string;
@@ -25,6 +27,9 @@ export type OutboundMailResult = {
   accepted: string[];
   rejected: string[];
   response: string;
+  // Set when the provider assigns its own id (Resend) — used to match
+  // delivery/bounce webhooks back to the EmailMessage.
+  providerMessageId?: string;
 };
 
 // The only thing in this app that speaks SMTP to the outside world — every
@@ -38,7 +43,10 @@ export class MailTransportService {
   private readonly logger = new Logger(MailTransportService.name);
   private transport?: Transporter;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly resend: ResendService,
+  ) {}
 
   private getTransport(): Transporter {
     if (!this.transport) {
@@ -56,7 +64,32 @@ export class MailTransportService {
     return this.transport;
   }
 
+  // MAIL_PROVIDER=resend: Resend signs (its own DKIM) and delivers; our
+  // per-message DKIM key and VERP envelope-from don't apply. Bounces and
+  // complaints come back through the /mail/webhooks/resend endpoint instead.
+  private async sendViaResend(
+    params: OutboundMailParams,
+  ): Promise<OutboundMailResult> {
+    const attachments = params.attachments
+      ? await Promise.all(
+          params.attachments.map(async (a) => ({
+            filename: a.filename,
+            content: (await fs.readFile(a.path)).toString('base64'),
+          })),
+        )
+      : undefined;
+    const { id } = await this.resend.sendEmail({ ...params, attachments });
+    this.logger.log(`Handed off ${params.messageId} to Resend: ${id}`);
+    return {
+      accepted: [...params.to, ...(params.cc ?? []), ...(params.bcc ?? [])],
+      rejected: [],
+      response: `resend:${id}`,
+      providerMessageId: id,
+    };
+  }
+
   async send(params: OutboundMailParams): Promise<OutboundMailResult> {
+    if (this.resend.isEnabled()) return this.sendViaResend(params);
     const transport = this.getTransport();
     type SendMailInfo = {
       accepted: unknown[];

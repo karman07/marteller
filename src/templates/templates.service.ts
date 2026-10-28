@@ -130,4 +130,48 @@ export class TemplatesService implements OnModuleInit {
     await this.model.deleteOne({ _id: id, userId }).exec();
     return { deleted: true };
   }
+
+  // Admin-only management of the shared system template library — the
+  // counterpart to the ForbiddenException in update()/remove() above, which
+  // blocks every tenant (including staff calling through their own userId)
+  // from touching isSystem templates. These methods are the one path that's
+  // allowed to, and only ever operate on isSystem documents.
+  listSystem(channel?: Channel, category?: WhatsappCategory) {
+    return this.model
+      .find({ isSystem: true, ...(channel ? { channel } : {}), ...(category ? { category } : {}) })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  createSystemTemplate(dto: CreateTemplateDto) {
+    validateButtonCaps(dto.buttons);
+    const variables = extractVariables(dto.header, dto.body, dto.footer, dto.subject);
+    return this.model.create({ ...dto, userId: SYSTEM_USER_ID, isSystem: true, variables });
+  }
+
+  async adminUpdate(id: string, dto: UpdateTemplateDto) {
+    const existing = await this.model.findOne({ _id: id, isSystem: true }).exec();
+    if (!existing) throw new NotFoundException('System template not found');
+    validateButtonCaps(dto.buttons);
+
+    const variables = extractVariables(
+      dto.header ?? existing.header,
+      dto.body ?? existing.body,
+      dto.footer ?? existing.footer,
+      dto.subject ?? existing.subject,
+    );
+
+    const updated = await this.model
+      .findByIdAndUpdate(id, { ...dto, variables }, { new: true })
+      .exec();
+    if (!updated) throw new NotFoundException('Template not found');
+    return updated;
+  }
+
+  async adminRemove(id: string) {
+    const existing = await this.model.findOne({ _id: id, isSystem: true }).exec();
+    if (!existing) throw new NotFoundException('System template not found');
+    await this.model.deleteOne({ _id: id, isSystem: true }).exec();
+    return { deleted: true };
+  }
 }

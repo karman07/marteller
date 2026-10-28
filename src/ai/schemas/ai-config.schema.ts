@@ -4,7 +4,8 @@ import { Channel, CHANNELS } from '../../templates/schemas/template.schema';
 
 export type KeyMode = 'own_key' | 'managed_credits';
 export type DataSourceStatus = 'processing' | 'ready';
-export type DataSourceType = 'file' | 'text' | 'url';
+// 'file' dropped — no upload/parsing infra exists (see AiService.addDataSource).
+export type DataSourceType = 'text' | 'url';
 export type AiProvider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek';
 
 export const AI_PROVIDERS: { id: AiProvider; label: string }[] = [
@@ -93,8 +94,15 @@ export class DataSource {
   @Prop({ required: true })
   name: string;
 
-  @Prop({ enum: ['file', 'text', 'url'], required: true })
+  @Prop({ enum: ['text', 'url'], required: true })
   type: DataSourceType;
+
+  // The actual retrievable text — pasted directly for 'text', fetched +
+  // HTML-stripped server-side for 'url' (see AiService.addDataSource).
+  // Real content, not metadata — this is what KnowledgeRetrieval chunks
+  // and scores against a query.
+  @Prop({ required: true })
+  content: string;
 
   @Prop({ enum: ['processing', 'ready'], default: 'processing' })
   status: DataSourceStatus;

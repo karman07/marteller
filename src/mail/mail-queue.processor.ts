@@ -11,6 +11,7 @@ import { Message, MessageDocument } from '../messages/schemas/message.schema';
 import { MailDomainsService } from '../mail-core/mail-domains.service';
 import { SuppressionService } from '../mail-core/suppression.service';
 import { MailTransportService } from '../mail-core/mail-transport.service';
+import { ResendPermanentError } from '../mail-core/resend.service';
 import { WalletService } from '../wallet/wallet.service';
 import { MailService } from './mail.service';
 import { MAIL_OUTBOUND_QUEUE } from './mail-queue.module';
@@ -103,6 +104,7 @@ export class MailQueueProcessor extends WorkerHost {
       }
 
       email.sentAt = new Date();
+      email.providerMessageId = result.providerMessageId;
       await this.finish(email, 'sent');
       if (!email.withinPlanAllowance) {
         await this.walletService.debit(
@@ -116,7 +118,7 @@ export class MailQueueProcessor extends WorkerHost {
       const message =
         err instanceof Error ? err.message : 'Relay handoff failed';
       const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-      if (isFinalAttempt) {
+      if (isFinalAttempt || err instanceof ResendPermanentError) {
         await this.finish(email, 'failed', message);
         return;
       }

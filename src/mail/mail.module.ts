@@ -5,6 +5,7 @@ import { ApiKeysModule } from '../api-keys/api-keys.module';
 import { MailCoreModule } from '../mail-core/mail-core.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { BillingModule } from '../billing/billing.module';
+import { VerificationModule } from '../verification/verification.module';
 import { AiModule } from '../ai/ai.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { LeadsModule } from '../leads/leads.module';
@@ -38,6 +39,7 @@ import { MailService } from './mail.service';
 import { MailInboundService } from './mail-inbound.service';
 import { MailQueueProcessor } from './mail-queue.processor';
 import { MailController } from './mail.controller';
+import { ResendWebhookController } from './resend-webhook.controller';
 
 // Deliberately does not import InboxModule or MessagesModule — writes to
 // their models directly (Message, InboundMessage), the same "direct model
@@ -52,6 +54,7 @@ import { MailController } from './mail.controller';
     MailQueueModule,
     WalletModule,
     BillingModule,
+    VerificationModule,
     AiModule,
     WorkflowsModule,
     LeadsModule,
@@ -66,7 +69,7 @@ import { MailController } from './mail.controller';
       { name: InboundMessage.name, schema: InboundMessageSchema },
     ]),
   ],
-  controllers: [MailController],
+  controllers: [MailController, ResendWebhookController],
   providers: [
     MailCredentialsService,
     MailUsageService,

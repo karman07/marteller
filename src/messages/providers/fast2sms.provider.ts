@@ -5,6 +5,7 @@ import {
   ProviderSendParams,
   ProviderSendResult,
 } from './provider.interface';
+import { normalizeIndianMobileNumber } from './phone-number.util';
 
 const FAST2SMS_ENDPOINT = 'https://www.fast2sms.com/dev/bulkV2';
 
@@ -81,7 +82,7 @@ export class Fast2SmsProvider implements MessageProvider {
       const data = (await res.json()) as Fast2SmsResponse;
 
       if (!res.ok || !data.return) {
-        const errorMessage = extractMessage(data.message) || `Fast2SMS request failed (${res.status})`;
+        const errorMessage = extractMessage(data.message) || `SMS request failed (${res.status})`;
         this.logger.warn(`Send to ${params.to} failed: ${errorMessage}`);
         return { providerMessageId: '', status: 'failed', errorMessage };
       }
@@ -96,16 +97,4 @@ export class Fast2SmsProvider implements MessageProvider {
       return { providerMessageId: '', status: 'failed', errorMessage };
     }
   }
-}
-
-// Fast2SMS's 'numbers' param wants a bare 10-digit Indian mobile number,
-// no country code or separators — strips a leading +91/91/0 and any
-// formatting, and rejects anything that doesn't reduce to exactly 10
-// digits starting 6-9 (the valid Indian mobile prefix range).
-function normalizeIndianMobileNumber(raw: string): string | null {
-  let digits = raw.replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-
-  return /^[6-9]\d{9}$/.test(digits) ? digits : null;
 }

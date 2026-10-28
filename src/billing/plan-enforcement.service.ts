@@ -5,7 +5,7 @@ import { Subscription, SubscriptionDocument } from './schemas/subscription.schem
 import { WalletTransaction, WalletTransactionDocument } from '../wallet/schemas/wallet-transaction.schema';
 import { PlansService } from './plans.service';
 
-export type BillableChannel = 'whatsapp' | 'email' | 'sms';
+export type BillableChannel = 'whatsapp' | 'email' | 'sms' | 'ai';
 
 @Injectable()
 export class PlanEnforcementService {

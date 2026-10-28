@@ -10,11 +10,20 @@ import { generateKeyPairSync, randomBytes } from 'crypto';
 import { promises as dns } from 'dns';
 import { MailDomain, MailDomainDocument } from './schemas/mail-domain.schema';
 import { decryptSecret, encryptSecret } from './mail-crypto.util';
+import { ResendDnsRecord, ResendService } from './resend.service';
 
 export type DkimForSend = {
   domainName: string;
   keySelector: string;
   privateKey: string;
+};
+
+export type DnsRecordRow = {
+  label: string;
+  type: string;
+  host: string;
+  value: string;
+  note?: string;
 };
 
 function newSelector(): string {
@@ -36,6 +45,7 @@ function toClientDomain(doc: MailDomainDocument) {
   delete (obj as Partial<typeof obj>).dkimPrivateKeyCiphertext;
   delete (obj as Partial<typeof obj>).dkimPrivateKeyIv;
   delete (obj as Partial<typeof obj>).dkimPrivateKeyAuthTag;
+  delete (obj as Partial<typeof obj>).resendRecords;
   return obj;
 }
 
@@ -45,6 +55,7 @@ export class MailDomainsService {
     @InjectModel(MailDomain.name)
     private readonly model: Model<MailDomainDocument>,
     private readonly config: ConfigService,
+    private readonly resend: ResendService,
   ) {}
 
   async list(userId: string) {
@@ -74,10 +85,23 @@ export class MailDomainsService {
     });
     const encrypted = encryptSecret(this.config, privateKey);
 
+    let resendDomain: Awaited<ReturnType<ResendService['createDomain']>> | undefined;
+    if (this.resend.isEnabled()) {
+      try {
+        resendDomain = await this.resend.createDomain(domain);
+      } catch (err) {
+        throw new BadRequestException(
+          `Could not register this domain with the mail provider: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     try {
       const created = await this.model.create({
         userId,
         domain,
+        resendDomainId: resendDomain?.id,
+        resendRecords: resendDomain?.records ?? [],
         status: 'pending',
         verificationToken: newVerificationToken(),
         dkimSelector: newSelector(),
@@ -94,6 +118,7 @@ export class MailDomainsService {
         'code' in err &&
         (err as { code: number }).code === 11000
       ) {
+        if (resendDomain) await this.resend.deleteDomain(resendDomain.id);
         throw new BadRequestException(
           'This domain is already added to your account, or verified by another account.',
         );
@@ -103,8 +128,11 @@ export class MailDomainsService {
   }
 
   async remove(userId: string, id: string) {
-    const res = await this.model.deleteOne({ _id: id, userId }).exec();
-    if (res.deletedCount === 0) throw new NotFoundException('Domain not found');
+    const doc = await this.model.findOneAndDelete({ _id: id, userId }).exec();
+    if (!doc) throw new NotFoundException('Domain not found');
+    if (doc.resendDomainId && this.resend.isEnabled()) {
+      await this.resend.deleteDomain(doc.resendDomainId);
+    }
     return { deleted: true };
   }
 
@@ -132,33 +160,52 @@ export class MailDomainsService {
 
   // DNS instructions shown in the dashboard — public key + verification
   // token only, never the private key.
-  dnsRecords(domain: MailDomainDocument) {
+  dnsRecords(domain: MailDomainDocument): { records: DnsRecordRow[] } {
+    if (domain.resendDomainId) {
+      return {
+        records: (domain.resendRecords as unknown as ResendDnsRecord[]).map(
+          (r) => ({
+            label: r.record,
+            type: r.type,
+            host: r.name,
+            value: r.value,
+            note: r.priority !== undefined ? `Priority ${r.priority}` : undefined,
+          }),
+        ),
+      };
+    }
     return {
-      verification: {
-        type: 'TXT',
-        host: `_mrtverify.${domain.domain}`,
-        value: domain.verificationToken,
-      },
-      dkim: {
-        type: 'TXT',
-        host: `${domain.dkimSelector}._domainkey.${domain.domain}`,
-        value: `v=DKIM1; k=rsa; p=${domain.dkimPublicKeyPem
-          .replace(/-----BEGIN PUBLIC KEY-----/, '')
-          .replace(/-----END PUBLIC KEY-----/, '')
-          .replace(/\s+/g, '')}`,
-      },
-      spf: {
-        type: 'TXT',
-        host: domain.domain,
-        value: 'v=spf1 a mx ~all',
-        note: 'Add our outbound sending IPs to this record once assigned — see the setup runbook.',
-      },
-      dmarc: {
-        type: 'TXT',
-        host: `_dmarc.${domain.domain}`,
-        value:
-          'v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@' + domain.domain,
-      },
+      records: [
+        {
+          label: 'Verification',
+          type: 'TXT',
+          host: `_mrtverify.${domain.domain}`,
+          value: domain.verificationToken,
+        },
+        {
+          label: 'DKIM',
+          type: 'TXT',
+          host: `${domain.dkimSelector}._domainkey.${domain.domain}`,
+          value: `v=DKIM1; k=rsa; p=${domain.dkimPublicKeyPem
+            .replace(/-----BEGIN PUBLIC KEY-----/, '')
+            .replace(/-----END PUBLIC KEY-----/, '')
+            .replace(/\s+/g, '')}`,
+        },
+        {
+          label: 'SPF',
+          type: 'TXT',
+          host: domain.domain,
+          value: 'v=spf1 a mx ~all',
+          note: 'Add our outbound sending IPs to this record once assigned — see the setup runbook.',
+        },
+        {
+          label: 'DMARC',
+          type: 'TXT',
+          host: `_dmarc.${domain.domain}`,
+          value:
+            'v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@' + domain.domain,
+        },
+      ],
     };
   }
 
@@ -179,9 +226,31 @@ export class MailDomainsService {
     // the add-domain -> verify -> send flow be exercised through the real
     // dashboard UI without owning real DNS for a test domain. Hard-gated on
     // NODE_ENV, exactly like the existing bypass; never applies in prod.
-    if (this.isDevBypassEnabled()) {
+    // Skipped for Resend-managed domains: Resend rejects sends from a domain
+    // it hasn't verified, so a fake "verified" here would just fail later.
+    if (this.isDevBypassEnabled() && !domain.resendDomainId) {
       domain.status = 'verified';
       domain.verifiedAt = new Date();
+      await domain.save();
+      return toClientDomain(domain);
+    }
+
+    if (domain.resendDomainId && this.resend.isEnabled()) {
+      try {
+        const remote = await this.resend.verifyDomain(domain.resendDomainId);
+        domain.resendRecords = (remote.records ?? []) as unknown as Record<
+          string,
+          unknown
+        >[];
+        if (remote.status === 'verified') {
+          domain.status = 'verified';
+          domain.verifiedAt = new Date();
+        } else {
+          domain.status = remote.status === 'failed' ? 'failed' : 'pending';
+        }
+      } catch {
+        domain.status = 'failed';
+      }
       await domain.save();
       return toClientDomain(domain);
     }

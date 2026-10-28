@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { MailDomainsService } from '../mail-core/mail-domains.service';
 import { SuppressionService } from '../mail-core/suppression.service';
 import { WalletService } from '../wallet/wallet.service';
 import { PlanEnforcementService } from '../billing/plan-enforcement.service';
+import { VerificationService } from '../verification/verification.service';
 import { PricingService } from '../messages/pricing.service';
 import { SendEmailDto } from './dto/send-email.dto';
 import { MailUsageService } from './mail-usage.service';
@@ -40,6 +42,7 @@ export class MailService {
     private readonly suppressionService: SuppressionService,
     private readonly walletService: WalletService,
     private readonly planEnforcementService: PlanEnforcementService,
+    private readonly verificationService: VerificationService,
     private readonly pricingService: PricingService,
     private readonly mailUsageService: MailUsageService,
     @InjectQueue(MAIL_OUTBOUND_QUEUE) private readonly queue: Queue,
@@ -49,6 +52,15 @@ export class MailService {
   // soon as the job is durably queued; a background worker does the actual
   // send (see MailQueueProcessor).
   async send(userId: string, dto: SendEmailDto) {
+    // Same gate as MessagesService.send() — this is the dedicated Mail API
+    // path (reachable via x-api-key, not just the dashboard's templated
+    // "Send" tab which already goes through MessagesService), so it needs
+    // its own copy of the check rather than inheriting it.
+    const verification = await this.verificationService.findByUserId(userId);
+    if (verification.status !== 'verified') {
+      throw new ForbiddenException('Complete business verification before sending messages');
+    }
+
     const fromDomain = dto.from.split('@')[1] ?? '';
     const domain = await this.mailDomainsService.getVerifiedDomainByName(
       userId,
@@ -82,7 +94,7 @@ export class MailService {
       const { balancePaise } = await this.walletService.getBalance(userId);
       if (balancePaise < costPaise) {
         throw new BadRequestException(
-          'Insufficient balance. Add funds to continue.',
+          'Insufficient credits. Add more credits to continue.',
         );
       }
     }

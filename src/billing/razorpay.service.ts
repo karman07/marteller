@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
 import Razorpay from 'razorpay';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -77,6 +78,30 @@ export class RazorpayService {
   async cancelSubscription(razorpaySubscriptionId: string, atCycleEnd: boolean) {
     const client = this.getClient();
     return client.subscriptions.cancel(razorpaySubscriptionId, atCycleEnd);
+  }
+
+  // One-time payment order for a wallet top-up (as opposed to the recurring
+  // Subscription flow above) — amountPaise is already in the smallest
+  // currency unit, same convention as Plan.priceMonthlyPaise.
+  async createOrder(amountPaise: number, receipt: string, notes?: Record<string, string>) {
+    const client = this.getClient();
+    return client.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt,
+      notes,
+    });
+  }
+
+  // Standard Razorpay Orders signature check — HMAC-SHA256 of
+  // "order_id|payment_id" against the account's key secret (NOT the
+  // separate webhook secret above). Verified synchronously right after
+  // Checkout's success handler, since a one-time order has no recurring
+  // webhook lifecycle the way a Subscription does.
+  verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
+    const secret = this.config.getOrThrow<string>('RAZORPAY_KEY_SECRET');
+    const expected = createHmac('sha256', secret).update(`${orderId}|${paymentId}`).digest('hex');
+    return expected === signature;
   }
 
   // HMAC-SHA256 signature check against RAZORPAY_WEBHOOK_SECRET, run

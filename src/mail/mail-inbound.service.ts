@@ -22,6 +22,7 @@ import { AiReplyService } from '../ai/ai-reply.service';
 import { LeadsService } from '../leads/leads.service';
 import { WorkflowsService } from '../workflows/workflows.service';
 import { MailService } from './mail.service';
+import { stripHtml } from '../common/strip-html.util';
 
 export type ParsedInboundAttachment = {
   filename: string;
@@ -43,15 +44,6 @@ export type ParsedInboundEmail = {
 };
 
 const UPLOAD_ROOT = join(process.cwd(), 'uploads', 'mail-inbound');
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 // The entry point for real inbound email — called by the inbound SMTP
 // listener (src/mail-inbound.main.ts) after Postfix + rspamd have accepted

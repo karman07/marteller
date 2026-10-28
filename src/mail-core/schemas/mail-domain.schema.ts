@@ -45,6 +45,14 @@ export class MailDomain {
   @Prop({ default: false, index: true })
   isDefault: boolean;
 
+  // Set when MAIL_PROVIDER=resend: the domain's id in Resend, which owns
+  // DKIM/SPF for it. The DNS records shown to the user come from Resend.
+  @Prop()
+  resendDomainId?: string;
+
+  @Prop({ type: [Object], default: [] })
+  resendRecords: Record<string, unknown>[];
+
   @Prop()
   verifiedAt?: Date;
 

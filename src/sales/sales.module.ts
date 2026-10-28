@@ -8,7 +8,12 @@ import { LeadsModule } from '../leads/leads.module';
 import { DocumentRequestsModule } from '../document-requests/document-requests.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { SmsCredentialsModule } from '../sms-credentials/sms-credentials.module';
+import { WhatsAppCredentialsModule } from '../whatsapp-credentials/whatsapp-credentials.module';
 import { StaffActivityModule } from '../staff-activity/staff-activity.module';
+import { MessagesModule } from '../messages/messages.module';
+import { TemplatesModule } from '../templates/templates.module';
+import { InboxModule } from '../inbox/inbox.module';
+import { BillingModule } from '../billing/billing.module';
 import { Message, MessageSchema } from '../messages/schemas/message.schema';
 import { SalesLead, SalesLeadSchema } from './schemas/sales-lead.schema';
 import { SalesService } from './sales.service';
@@ -27,7 +32,12 @@ import { SalesGuard } from './sales.guard';
     DocumentRequestsModule,
     AnalyticsModule,
     SmsCredentialsModule,
+    WhatsAppCredentialsModule,
     StaffActivityModule,
+    MessagesModule,
+    TemplatesModule,
+    InboxModule,
+    BillingModule,
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: SalesLead.name, schema: SalesLeadSchema },

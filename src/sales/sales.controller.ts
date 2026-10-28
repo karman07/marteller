@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UploadedFiles,
@@ -22,6 +23,7 @@ import { SalesGuard } from './sales.guard';
 import { SalesService } from './sales.service';
 import { ReviewApplicationDto } from './dto/review-application.dto';
 import { UpdateStageDto } from './dto/update-stage.dto';
+import { ReviewWhatsappTemplateApprovalDto } from './dto/review-whatsapp-template-approval.dto';
 import {
   CreateFieldDto,
   ReorderFieldsDto,
@@ -42,9 +44,17 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import { UsersService } from '../users/users.service';
 import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
+import { WhatsAppCredentialsService } from '../whatsapp-credentials/whatsapp-credentials.service';
+import { UpsertWhatsAppCredentialDto } from '../whatsapp-credentials/dto/upsert-whatsapp-credential.dto';
 import { WalletService } from '../wallet/wallet.service';
 import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
 import { StaffActivityService } from '../staff-activity/staff-activity.service';
+import { MessagesService } from '../messages/messages.service';
+import { SendMessageDto } from '../messages/dto/send-message.dto';
+import { TemplatesService } from '../templates/templates.service';
+import type { Channel, WhatsappCategory } from '../templates/schemas/template.schema';
+import { InboxService } from '../inbox/inbox.service';
+import { SubscriptionsService } from '../billing/subscriptions.service';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -61,8 +71,13 @@ export class SalesController {
     private readonly analyticsService: AnalyticsService,
     private readonly usersService: UsersService,
     private readonly smsCredentialsService: SmsCredentialsService,
+    private readonly whatsappCredentialsService: WhatsAppCredentialsService,
     private readonly walletService: WalletService,
     private readonly staffActivityService: StaffActivityService,
+    private readonly messagesService: MessagesService,
+    private readonly templatesService: TemplatesService,
+    private readonly inboxService: InboxService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   // The pool of sales reps a lead can be (re)assigned to — every sales rep
@@ -151,6 +166,13 @@ export class SalesController {
     return this.salesService.getUsage(userId);
   }
 
+  // This applicant's plan + per-channel allowance used so far this period
+  // — same as the identical AdminController route, see its comment.
+  @Get('applicants/:userId/subscription')
+  getApplicantSubscription(@Param('userId') userId: string) {
+    return this.subscriptionsService.getForUser(userId);
+  }
+
   // Sales crediting a customer's wallet directly — same action the
   // customer can do themselves from their own dashboard, or admin can do
   // via the identical route on AdminController. Separate from a Plan's
@@ -164,7 +186,7 @@ export class SalesController {
     const result = await this.walletService.addBalance(
       userId,
       dto.amountPaise,
-      'Balance added by sales team',
+      'Credits added by sales team',
     );
     this.staffActivityService.log(
       req.userId,
@@ -199,6 +221,33 @@ export class SalesController {
   @Delete('applicants/:userId/sms-credential')
   removeSmsCredential(@Param('userId') userId: string) {
     return this.smsCredentialsService.remove(userId);
+  }
+
+  // Per-user Meta WhatsApp Cloud API config — staff-provisioned, not
+  // self-service (see WhatsAppCredential schema comment). Every sales rep
+  // and admin can view/set this identically, same as the SMS credential
+  // routes above.
+  @Get('applicants/:userId/whatsapp-credential')
+  getWhatsAppCredential(@Param('userId') userId: string) {
+    return this.whatsappCredentialsService.findByUserId(userId);
+  }
+
+  @Put('applicants/:userId/whatsapp-credential')
+  async setWhatsAppCredential(
+    @Param('userId') userId: string,
+    @Body() dto: UpsertWhatsAppCredentialDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const credential = await this.whatsappCredentialsService.upsert(userId, dto, req.userId);
+    this.staffActivityService.log(req.userId, 'whatsapp_configured', 'Configured WhatsApp provider', {
+      targetUserId: userId,
+    });
+    return credential;
+  }
+
+  @Delete('applicants/:userId/whatsapp-credential')
+  removeWhatsAppCredential(@Param('userId') userId: string) {
+    return this.whatsappCredentialsService.remove(userId);
   }
 
   @Get('applicants/:userId/events')
@@ -269,5 +318,95 @@ export class SalesController {
     return res.sendFile(filePath, (err) => {
       if (err) throw new NotFoundException('File not found');
     });
+  }
+
+  // Read-only browse of the shared system template library (plus this rep's
+  // own templates, via the existing $or in TemplatesService.list) — only
+  // admin can create/edit/delete system templates (AdminController).
+  @Get('templates')
+  listTemplates(
+    @Req() req: Request & { userId: string },
+    @Query('channel') channel?: Channel,
+    @Query('category') category?: WhatsappCategory,
+  ) {
+    return this.templatesService.list(req.userId, channel, category);
+  }
+
+  // --- Messaging: per-applicant drill-in — identical service calls to the
+  // tenant's own self-service dashboard (see MessagesController/
+  // InboxController), just with the target :userId from the route instead
+  // of req.userId. Sales has global visibility already (see SalesGuard), so
+  // there's no separate cross-tenant overview the way AdminController has. ---
+
+  @Get('applicants/:userId/messages/summary')
+  getApplicantMessagesSummary(
+    @Param('userId') userId: string,
+    @Query('channel') channel?: Channel,
+    @Query('days') days?: string,
+  ) {
+    return this.messagesService.summary(userId, channel, Number(days) || 14);
+  }
+
+  @Get('applicants/:userId/messages')
+  listApplicantMessages(
+    @Param('userId') userId: string,
+    @Query('channel') channel?: Channel,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.messagesService.list(userId, channel, Number(page) || 1, Number(limit) || 20);
+  }
+
+  @Post('applicants/:userId/messages/send')
+  sendApplicantMessage(@Param('userId') userId: string, @Body() dto: SendMessageDto) {
+    return this.messagesService.send(userId, dto);
+  }
+
+  @Get('applicants/:userId/inbox/:channel')
+  listApplicantInboxConversations(
+    @Param('userId') userId: string,
+    @Param('channel') channel: Channel,
+  ) {
+    return this.inboxService.listConversations(userId, channel);
+  }
+
+  @Get('applicants/:userId/inbox/:channel/:contact')
+  getApplicantInboxConversation(
+    @Param('userId') userId: string,
+    @Param('channel') channel: Channel,
+    @Param('contact') contact: string,
+  ) {
+    return this.inboxService.getConversation(userId, channel, contact);
+  }
+
+  // The queue of WhatsApp templates (across every tenant) waiting on the
+  // one manual step our provider genuinely requires — see SalesService
+  // comment. Global, not per-applicant, same reasoning as stats()/
+  // listPipeline() above.
+  @Get('whatsapp-template-approvals')
+  listWhatsappTemplateApprovals() {
+    return this.salesService.listWhatsappTemplateApprovals();
+  }
+
+  @Put('whatsapp-template-approvals/:userId/:templateId')
+  async reviewWhatsappTemplateApproval(
+    @Param('userId') userId: string,
+    @Param('templateId') templateId: string,
+    @Body() dto: ReviewWhatsappTemplateApprovalDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.salesService.reviewWhatsappTemplateApproval(
+      userId,
+      templateId,
+      dto,
+      req.userId,
+    );
+    this.staffActivityService.log(
+      req.userId,
+      'whatsapp_template_reviewed',
+      `${dto.status === 'approved' ? 'Approved' : 'Rejected'} a WhatsApp template`,
+      { targetUserId: userId },
+    );
+    return result;
   }
 }

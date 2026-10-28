@@ -12,6 +12,7 @@ import { TemplatesModule } from './templates/templates.module';
 import { MessagesModule } from './messages/messages.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AiModule } from './ai/ai.module';
+import { AiChatModule } from './ai-chat/ai-chat.module';
 import { WalletModule } from './wallet/wallet.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { WorkflowsModule } from './workflows/workflows.module';
@@ -44,6 +45,7 @@ import { BillingModule } from './billing/billing.module';
     MessagesModule,
     ApiKeysModule,
     AiModule,
+    AiChatModule,
     WalletModule,
     ContactsModule,
     WorkflowsModule,

@@ -96,6 +96,10 @@ export class EmailMessage {
   @Prop()
   lastError?: string;
 
+  // Resend's id for this send (MAIL_PROVIDER=resend) — webhooks key on it.
+  @Prop({ index: true, sparse: true })
+  providerMessageId?: string;
+
   @Prop({ required: true })
   costPaise: number;
 

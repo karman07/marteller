@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { MailTransportService } from './mail-transport.service';
+import { ResendService } from './resend.service';
 import { SystemMailLog, SystemMailLogDocument } from './schemas/system-mail-log.schema';
 
 // Internal platform notifications (verification approved/rejected, and
@@ -36,11 +37,20 @@ export class SystemMailService {
   constructor(
     private readonly config: ConfigService,
     private readonly mailTransportService: MailTransportService,
+    private readonly resend: ResendService,
     @InjectModel(SystemMailLog.name)
     private readonly logModel: Model<SystemMailLogDocument>,
   ) {}
 
   private isConfigured(): boolean {
+    // Resend signs with its own DKIM, so only the From address is needed
+    // (it must be on a domain verified in the Resend dashboard).
+    if (this.resend.isEnabled()) {
+      return !!(
+        this.config.get<string>('SYSTEM_MAIL_FROM') &&
+        this.config.get<string>('RESEND_API_KEY')
+      );
+    }
     return !!(
       this.config.get<string>('SYSTEM_MAIL_FROM') &&
       this.config.get<string>('SYSTEM_MAIL_DOMAIN') &&
@@ -64,12 +74,13 @@ export class SystemMailService {
     }
 
     const from = this.config.getOrThrow<string>('SYSTEM_MAIL_FROM');
-    const domainName = this.config.getOrThrow<string>('SYSTEM_MAIL_DOMAIN');
-    const keySelector = this.config.getOrThrow<string>(
-      'SYSTEM_MAIL_DKIM_SELECTOR',
-    );
-    const privateKey = this.config
-      .getOrThrow<string>('SYSTEM_MAIL_DKIM_PRIVATE_KEY')
+    const domainName =
+      this.config.get<string>('SYSTEM_MAIL_DOMAIN') ??
+      from.split('@').pop()!.replace(/>$/, '');
+    const keySelector = this.config.get<string>('SYSTEM_MAIL_DKIM_SELECTOR') ?? '';
+    const privateKey = (
+      this.config.get<string>('SYSTEM_MAIL_DKIM_PRIVATE_KEY') ?? ''
+    )
       // .env stores the PEM with literal "\n" escapes (can't contain real
       // newlines in a single env var line) — unescape before use.
       .replace(/\\n/g, '\n');

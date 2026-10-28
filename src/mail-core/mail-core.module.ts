@@ -12,6 +12,7 @@ import {
 import { MailDomainsService } from './mail-domains.service';
 import { SuppressionService } from './suppression.service';
 import { MailTransportService } from './mail-transport.service';
+import { ResendService } from './resend.service';
 import { SystemMailService } from './system-mail.service';
 
 // The primitives shared by both the thin generic-channel email provider
@@ -31,12 +32,14 @@ import { SystemMailService } from './system-mail.service';
     MailDomainsService,
     SuppressionService,
     MailTransportService,
+    ResendService,
     SystemMailService,
   ],
   exports: [
     MailDomainsService,
     SuppressionService,
     MailTransportService,
+    ResendService,
     SystemMailService,
   ],
 })

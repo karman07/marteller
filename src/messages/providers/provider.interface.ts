@@ -16,6 +16,13 @@ export type ProviderSendParams = {
   // rather than sending from one shared identity for every account. Mock
   // providers ignore it.
   userId?: string;
+  // Optional — only the Fast2SMS WhatsApp provider reads these. It can't
+  // work off `body` alone: Fast2SMS needs its own per-tenant message_id
+  // (resolved from templateId via WhatsAppTemplateMappingService) and the
+  // raw variable values in the original template's positional order,
+  // not a pre-rendered string. Email/SMS providers ignore both.
+  templateId?: string;
+  variables?: Record<string, string>;
 };
 
 export interface MessageProvider {

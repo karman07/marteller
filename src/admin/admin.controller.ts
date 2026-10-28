@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req,
   Res,
   UploadedFiles,
@@ -23,6 +24,7 @@ import { SalesService } from '../sales/sales.service';
 import { SalesLeadsService } from '../sales/sales-leads.service';
 import { ReviewApplicationDto } from '../sales/dto/review-application.dto';
 import { UpdateStageDto } from '../sales/dto/update-stage.dto';
+import { ReviewWhatsappTemplateApprovalDto } from '../sales/dto/review-whatsapp-template-approval.dto';
 import {
   CreateSalesLeadDto,
   PromoteLeadDto,
@@ -49,11 +51,22 @@ import { CreateTeamMemberDto } from '../users/dto/create-team-member.dto';
 import { SetPasswordDto } from '../users/dto/set-password.dto';
 import { SmsCredentialsService } from '../sms-credentials/sms-credentials.service';
 import { UpsertSmsCredentialDto } from '../sms-credentials/dto/upsert-sms-credential.dto';
+import { WhatsAppCredentialsService } from '../whatsapp-credentials/whatsapp-credentials.service';
+import { UpsertWhatsAppCredentialDto } from '../whatsapp-credentials/dto/upsert-whatsapp-credential.dto';
 import { PricingService } from '../messages/pricing.service';
 import { UpdateRateCardDto } from '../messages/dto/update-rate-card.dto';
 import { WalletService } from '../wallet/wallet.service';
 import { AdminAddBalanceDto } from '../wallet/dto/admin-add-balance.dto';
 import { StaffActivityService } from '../staff-activity/staff-activity.service';
+import { MessagesService } from '../messages/messages.service';
+import { SendMessageDto } from '../messages/dto/send-message.dto';
+import { TemplatesService } from '../templates/templates.service';
+import { CreateTemplateDto } from '../templates/dto/create-template.dto';
+import { GenerateTemplateDto } from '../templates/dto/generate-template.dto';
+import { AiReplyService } from '../ai/ai-reply.service';
+import { UpdateTemplateDto } from '../templates/dto/update-template.dto';
+import type { Channel, WhatsappCategory } from '../templates/schemas/template.schema';
+import { InboxService } from '../inbox/inbox.service';
 
 const DOCUMENT_REQUEST_UPLOAD_DIR = join(
   process.cwd(),
@@ -79,9 +92,14 @@ export class AdminController {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly usersService: UsersService,
     private readonly smsCredentialsService: SmsCredentialsService,
+    private readonly whatsappCredentialsService: WhatsAppCredentialsService,
     private readonly pricingService: PricingService,
     private readonly walletService: WalletService,
     private readonly staffActivityService: StaffActivityService,
+    private readonly messagesService: MessagesService,
+    private readonly templatesService: TemplatesService,
+    private readonly inboxService: InboxService,
+    private readonly aiReplyService: AiReplyService,
   ) {}
 
   @Get('applicants')
@@ -160,6 +178,15 @@ export class AdminController {
     return this.salesService.getUsage(userId);
   }
 
+  // This applicant's plan + per-channel allowance used so far this period
+  // — lets staff see at a glance whether they're close to their limit
+  // before escalating to a wallet top-up. Returns null if they have no
+  // active plan (pure pay-as-you-go).
+  @Get('applicants/:userId/subscription')
+  getApplicantSubscription(@Param('userId') userId: string) {
+    return this.subscriptionsService.getForUser(userId);
+  }
+
   // Admin crediting a customer's wallet directly — separate from a Plan's
   // monthly platform fee (see RateCard/Plan schema comments): this is the
   // pay-as-you-go balance that funds messages beyond a plan's allowance
@@ -176,7 +203,7 @@ export class AdminController {
     const result = await this.walletService.addBalance(
       userId,
       dto.amountPaise,
-      'Balance added by admin',
+      'Credits added by admin',
     );
     this.staffActivityService.log(
       req.userId,
@@ -210,6 +237,32 @@ export class AdminController {
   @Delete('applicants/:userId/sms-credential')
   removeSmsCredential(@Param('userId') userId: string) {
     return this.smsCredentialsService.remove(userId);
+  }
+
+  // Per-user Meta WhatsApp Cloud API config — staff-provisioned, not
+  // self-service (see WhatsAppCredential schema comment). Identical to
+  // SalesController's route.
+  @Get('applicants/:userId/whatsapp-credential')
+  getWhatsAppCredential(@Param('userId') userId: string) {
+    return this.whatsappCredentialsService.findByUserId(userId);
+  }
+
+  @Put('applicants/:userId/whatsapp-credential')
+  async setWhatsAppCredential(
+    @Param('userId') userId: string,
+    @Body() dto: UpsertWhatsAppCredentialDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const credential = await this.whatsappCredentialsService.upsert(userId, dto, req.userId);
+    this.staffActivityService.log(req.userId, 'whatsapp_configured', 'Configured WhatsApp provider', {
+      targetUserId: userId,
+    });
+    return credential;
+  }
+
+  @Delete('applicants/:userId/whatsapp-credential')
+  removeWhatsAppCredential(@Param('userId') userId: string) {
+    return this.whatsappCredentialsService.remove(userId);
   }
 
   @Get('applicants/:userId/events')
@@ -440,5 +493,138 @@ export class AdminController {
   @Get('sales-activity')
   listSalesActivity() {
     return this.staffActivityService.listRecent(150);
+  }
+
+  // --- Messaging: cross-tenant overview (whatsapp/email/sms) ---
+
+  @Get('messages/summary')
+  getMessagingSummary(
+    @Query('channel') channel?: Channel,
+    @Query('days') days?: string,
+  ) {
+    return this.messagesService.summaryAll(channel, Number(days) || 14);
+  }
+
+  @Get('messages')
+  listMessagesGlobal(
+    @Query('channel') channel?: Channel,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.messagesService.listAll(channel, Number(page) || 1, Number(limit) || 20);
+  }
+
+  // Drafts a system template from a prompt — doesn't save it, admin
+  // reviews and saves via the POST below. Exempt from the AI generation
+  // allowance check: admin has no Plan/Subscription to draw one from (see
+  // AiReplyService.generateTemplate's skipCreditCheck). Still needs admin's
+  // own AI model + API key configured via the generic /ai/config and
+  // /ai/keys/:provider routes (no admin-specific AI settings page exists —
+  // those routes just key off the caller's own userId, admin included).
+  @Post('templates/generate')
+  generateSystemTemplate(
+    @Req() req: Request & { userId: string },
+    @Body() dto: GenerateTemplateDto,
+  ) {
+    return this.aiReplyService.generateTemplate(req.userId, dto, { skipCreditCheck: true });
+  }
+
+  // Shared system template library — visible to every tenant already (see
+  // TemplatesService.list()'s $or), but only admin can create/edit/delete it.
+  @Get('templates')
+  listSystemTemplates(
+    @Query('channel') channel?: Channel,
+    @Query('category') category?: WhatsappCategory,
+  ) {
+    return this.templatesService.listSystem(channel, category);
+  }
+
+  @Post('templates')
+  createSystemTemplate(@Body() dto: CreateTemplateDto) {
+    return this.templatesService.createSystemTemplate(dto);
+  }
+
+  @Patch('templates/:id')
+  updateSystemTemplate(@Param('id') id: string, @Body() dto: UpdateTemplateDto) {
+    return this.templatesService.adminUpdate(id, dto);
+  }
+
+  @Delete('templates/:id')
+  removeSystemTemplate(@Param('id') id: string) {
+    return this.templatesService.adminRemove(id);
+  }
+
+  // --- Messaging: per-applicant drill-in — identical service calls to the
+  // tenant's own self-service dashboard (see MessagesController/
+  // InboxController), just with the target :userId from the route instead
+  // of req.userId. ---
+
+  @Get('applicants/:userId/messages/summary')
+  getApplicantMessagesSummary(
+    @Param('userId') userId: string,
+    @Query('channel') channel?: Channel,
+    @Query('days') days?: string,
+  ) {
+    return this.messagesService.summary(userId, channel, Number(days) || 14);
+  }
+
+  @Get('applicants/:userId/messages')
+  listApplicantMessages(
+    @Param('userId') userId: string,
+    @Query('channel') channel?: Channel,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.messagesService.list(userId, channel, Number(page) || 1, Number(limit) || 20);
+  }
+
+  @Post('applicants/:userId/messages/send')
+  sendApplicantMessage(@Param('userId') userId: string, @Body() dto: SendMessageDto) {
+    return this.messagesService.send(userId, dto);
+  }
+
+  @Get('applicants/:userId/inbox/:channel')
+  listApplicantInboxConversations(
+    @Param('userId') userId: string,
+    @Param('channel') channel: Channel,
+  ) {
+    return this.inboxService.listConversations(userId, channel);
+  }
+
+  @Get('applicants/:userId/inbox/:channel/:contact')
+  getApplicantInboxConversation(
+    @Param('userId') userId: string,
+    @Param('channel') channel: Channel,
+    @Param('contact') contact: string,
+  ) {
+    return this.inboxService.getConversation(userId, channel, contact);
+  }
+
+  // Identical to SalesController's route — see SalesService comment.
+  @Get('whatsapp-template-approvals')
+  listWhatsappTemplateApprovals() {
+    return this.salesService.listWhatsappTemplateApprovals();
+  }
+
+  @Put('whatsapp-template-approvals/:userId/:templateId')
+  async reviewWhatsappTemplateApproval(
+    @Param('userId') userId: string,
+    @Param('templateId') templateId: string,
+    @Body() dto: ReviewWhatsappTemplateApprovalDto,
+    @Req() req: Request & { userId: string },
+  ) {
+    const result = await this.salesService.reviewWhatsappTemplateApproval(
+      userId,
+      templateId,
+      dto,
+      req.userId,
+    );
+    this.staffActivityService.log(
+      req.userId,
+      'whatsapp_template_reviewed',
+      `${dto.status === 'approved' ? 'Approved' : 'Rejected'} a WhatsApp template`,
+      { targetUserId: userId },
+    );
+    return result;
   }
 }

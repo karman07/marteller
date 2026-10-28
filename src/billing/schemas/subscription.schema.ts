@@ -52,7 +52,7 @@ export class Subscription {
 
   // Reset to {0,0,0} on every subscription.charged webhook (new billing
   // period started) — see SubscriptionsService.processWebhookEvent.
-  @Prop({ type: Object, default: { whatsapp: 0, email: 0, sms: 0 } })
+  @Prop({ type: Object, default: { whatsapp: 0, email: 0, sms: 0, ai: 0 } })
   messagesUsedThisPeriod: PlanMessageLimits;
 
   @Prop({ default: false })

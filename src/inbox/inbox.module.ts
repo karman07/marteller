@@ -29,5 +29,8 @@ import { InboxController } from './inbox.controller';
   ],
   controllers: [InboxController],
   providers: [InboxService],
+  // AdminModule/SalesModule reuse this directly for per-applicant inbox
+  // drill-in, same reasoning as SalesModule exporting SalesService.
+  exports: [InboxService],
 })
 export class InboxModule {}

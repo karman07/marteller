@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import Anthropic from '@anthropic-ai/sdk';
 import { Model } from 'mongoose';
@@ -8,7 +8,9 @@ import {
   AiConfigDocument,
   AiProvider,
 } from './schemas/ai-config.schema';
-import type { Channel } from '../templates/schemas/template.schema';
+import type { Channel, WhatsappCategory } from '../templates/schemas/template.schema';
+import { PlanEnforcementService } from '../billing/plan-enforcement.service';
+import { retrieveRelevantChunks } from './knowledge-retrieval';
 
 export type AiSentiment = 'positive' | 'negative' | 'neutral';
 export const AI_SENTIMENTS: AiSentiment[] = ['positive', 'negative', 'neutral'];
@@ -28,18 +30,28 @@ const OPENAI_COMPATIBLE_BASE_URLS: Partial<Record<AiProvider, string>> = {
   deepseek: 'https://api.deepseek.com',
 };
 
-function buildSystemPrompt(businessGuidance?: string): string {
+// chunks: lexical-retrieval results from this business's own knowledge
+// base (see knowledge-retrieval.ts) relevant to the current message —
+// injected so the reply is actually grounded, rather than the previous
+// behavior where AiConfig.dataSources was collected but never read.
+function buildSystemPrompt(businessGuidance?: string, chunks: { sourceName: string; text: string }[] = []): string {
   return [
     'You are the AI customer-support and sales assistant for a business that uses the Marteller marketing platform.',
     businessGuidance
       ? `Guidance from the business owner on tone, offers, and escalation rules:\n${businessGuidance}`
       : 'The business owner has not set any specific guidance yet — reply helpfully and generically.',
+    chunks.length > 0
+      ? 'Relevant excerpts from this business\'s own knowledge base — prefer this over general knowledge when it applies:\n' +
+        chunks.map((c) => `[${c.sourceName}]\n${c.text}`).join('\n\n')
+      : '',
     'A customer just sent an inbound message on WhatsApp, Email, or SMS. Write the reply this business would want sent back.',
     'If the message is clearly outside what this business sells or supports, politely say so, avoid guessing at unrelated topics, and offer to connect them with a human — and mark inDomain false. Otherwise mark inDomain true.',
     'Judge the customer\'s tone toward the business as "positive", "negative", or "neutral".',
     "This is the classification the business cares about most: is this customer a potential lead? Mark interested true if they show any genuine buying intent (asking about pricing, features, availability, how to sign up/order, requesting a demo or callback) OR ask a real, specific question about the business's product or service — a real question is itself a sign of interest worth following up on. Mark interested false only for spam, small talk with no product relevance, or messages that are clearly off-topic for this business.",
     'Respond with ONLY a single JSON object and nothing else, no markdown fences: {"reply": string, "sentiment": "positive" | "negative" | "neutral", "inDomain": boolean, "interested": boolean}',
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 function extractJson(raw: string): Record<string, unknown> | null {
@@ -76,11 +88,69 @@ function toResult(
   return { reply, sentiment, inDomain, interested, provider, model };
 }
 
+export type GeneratedTemplate = {
+  name: string;
+  body: string;
+  subject?: string;
+  category?: WhatsappCategory;
+  footer?: string;
+};
+
+function buildTemplateSystemPrompt(channel: Channel): string {
+  const shared =
+    'You write message templates for a business using the Marteller marketing platform. ' +
+    'Given a short request, write ONE template. Use {{snake_case}} placeholders for any field that ' +
+    "needs personalizing (e.g. {{name}}, {{order_id}}, {{date}}) — never invent real customer data. " +
+    'Respond with ONLY a single JSON object and nothing else, no markdown fences.';
+
+  if (channel === 'whatsapp') {
+    return (
+      shared +
+      ' JSON shape: {"name": string (short internal label, not shown to customers), ' +
+      '"category": "marketing" | "utility" | "authentication", "body": string (max 1024 chars), ' +
+      '"footer": string (optional, max 60 chars)}.'
+    );
+  }
+  if (channel === 'email') {
+    return (
+      shared +
+      ' JSON shape: {"name": string (short internal label, not shown to customers), "subject": string, "body": string}.'
+    );
+  }
+  return (
+    shared +
+    ' JSON shape: {"name": string (short internal label, not shown to customers), ' +
+    '"body": string (SMS — keep it concise, ideally under 160 chars)}.'
+  );
+}
+
+function toGeneratedTemplate(raw: string, channel: Channel): GeneratedTemplate {
+  const parsed = extractJson(raw);
+  if (!parsed || typeof parsed.name !== 'string' || typeof parsed.body !== 'string' || !parsed.body.trim()) {
+    throw new BadRequestException('AI did not return a usable template — try rephrasing your request.');
+  }
+  const category =
+    channel === 'whatsapp' && (parsed.category === 'utility' || parsed.category === 'authentication')
+      ? (parsed.category as WhatsappCategory)
+      : channel === 'whatsapp'
+        ? 'marketing'
+        : undefined;
+  return {
+    name: parsed.name.slice(0, 80),
+    body: parsed.body,
+    subject: channel === 'email' && typeof parsed.subject === 'string' ? parsed.subject : undefined,
+    category,
+    footer:
+      channel === 'whatsapp' && typeof parsed.footer === 'string' ? parsed.footer.slice(0, 60) : undefined,
+  };
+}
+
 @Injectable()
 export class AiReplyService {
   constructor(
     @InjectModel(AiConfig.name)
     private readonly configModel: Model<AiConfigDocument>,
+    private readonly planEnforcementService: PlanEnforcementService,
   ) {}
 
   // The "dispatch wiring" AiConfig.autoReplyChannels/autoSendChannels'
@@ -100,15 +170,39 @@ export class AiReplyService {
     userId: string,
     customerMessage: string,
   ): Promise<AiReplyResult> {
+    // Plan's monthly AI-reply allowance — a hard stop, not a wallet
+    // overflow like whatsapp/email/sms: this feature costs the platform
+    // nothing in 'own_key' mode (the only mode that works today, see the
+    // keyMode check below), so there's no per-use price to bill against.
+    const allowed = await this.planEnforcementService.checkAndReserve(userId, 'ai', 1);
+    if (!allowed) {
+      throw new ForbiddenException(
+        'No AI replies left this period — upgrade your plan or wait for the next billing cycle.',
+      );
+    }
+
+    const { config, model, apiKey } = await this.resolveModelAndKey(userId);
+    const chunks = retrieveRelevantChunks(config.dataSources, customerMessage);
+    const system = buildSystemPrompt(config.systemPrompt, chunks);
+    const raw = await this.callProvider(model.provider, model.id, apiKey, system, customerMessage);
+    return toResult(raw, model.provider, model.id);
+  }
+
+  // Shared by generateReply/generateTemplate, and by AiChatService (a
+  // different module — see its own file for why it can't just extend this
+  // class: TemplatesModule already imports AiModule, so AiModule importing
+  // TemplatesModule/MessagesModule back would be circular). Throws the same
+  // errors either way so all three surfaces give consistent guidance.
+  async resolveModelAndKey(
+    userId: string,
+  ): Promise<{ config: AiConfigDocument; model: (typeof AI_MODELS)[number]; apiKey: string }> {
     const config = await this.configModel.findOne({ userId }).exec();
     if (!config) {
-      throw new BadRequestException(
-        'Set up the AI Assistant (model + API key) before testing replies.',
-      );
+      throw new BadRequestException('Set up an AI model and API key first.');
     }
     if (config.keyMode !== 'own_key') {
       throw new BadRequestException(
-        'Live AI replies need your own provider API key — switch to "Own API key" in AI Assistant → Model and save one.',
+        'This needs your own provider API key — switch to "Own API key" and save one.',
       );
     }
 
@@ -117,27 +211,41 @@ export class AiReplyService {
       throw new BadRequestException('Selected AI model is not recognized.');
     }
 
-    const keyEntry = config.ownApiKeys.find(
-      (k) => k.provider === model.provider,
-    );
+    const keyEntry = config.ownApiKeys.find((k) => k.provider === model.provider);
     if (!keyEntry) {
-      throw new BadRequestException(
-        `No ${model.provider} API key saved yet — add one in AI Assistant → Model.`,
-      );
+      throw new BadRequestException(`No ${model.provider} API key saved yet.`);
     }
 
-    const system = buildSystemPrompt(config.systemPrompt);
-    const raw = await this.callProvider(
-      model.provider,
-      model.id,
-      keyEntry.key,
-      system,
-      customerMessage,
-    );
-    return toResult(raw, model.provider, model.id);
+    return { config, model, apiKey: keyEntry.key };
   }
 
-  private async callProvider(
+  // Drafts a template (name/body/subject/category) from a short prompt —
+  // shares the exact AiConfig (model + own API key) resolution generateReply
+  // uses, just a different system prompt and response shape. `skipCreditCheck`
+  // is set by AdminController for the shared system-template library: admin
+  // has no Plan/Subscription to draw an allowance from at all, so it's
+  // exempt rather than always failing the check (see caller).
+  async generateTemplate(
+    userId: string,
+    params: { channel: Channel; prompt: string },
+    options: { skipCreditCheck?: boolean } = {},
+  ): Promise<GeneratedTemplate> {
+    if (!options.skipCreditCheck) {
+      const allowed = await this.planEnforcementService.checkAndReserve(userId, 'ai', 1);
+      if (!allowed) {
+        throw new ForbiddenException(
+          'No AI generations left this period — upgrade your plan or wait for the next billing cycle.',
+        );
+      }
+    }
+
+    const { model, apiKey } = await this.resolveModelAndKey(userId);
+    const system = buildTemplateSystemPrompt(params.channel);
+    const raw = await this.callProvider(model.provider, model.id, apiKey, system, params.prompt);
+    return toGeneratedTemplate(raw, params.channel);
+  }
+
+  async callProvider(
     provider: AiProvider,
     model: string,
     apiKey: string,

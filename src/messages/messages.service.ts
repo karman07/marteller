@@ -87,13 +87,20 @@ export class MessagesService {
     if (!coveredByPlan) {
       const { balancePaise } = await this.walletService.getBalance(userId);
       if (balancePaise < totalCostPaise) {
-        throw new BadRequestException('Insufficient balance. Add funds to continue.');
+        throw new BadRequestException('Insufficient credits. Add more credits to continue.');
       }
     }
 
     const results = await Promise.all(
       perRecipient.map(async (r) => {
-        const result = await provider.send({ to: r.to, subject: r.subject, body: r.body, userId });
+        const result = await provider.send({
+          to: r.to,
+          subject: r.subject,
+          body: r.body,
+          userId,
+          templateId: dto.templateId,
+          variables: r.variables,
+        });
         return this.model.create({
           userId,
           channel: template.channel,
@@ -188,6 +195,135 @@ export class MessagesService {
         .exec(),
       this.model.aggregate([
         { $match: { userId, createdAt: { $gte: since }, ...channelFilter } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const totalsRow = totals[0] ?? { total: 0, delivered: 0 };
+    const deliveryRate = totalsRow.total > 0 ? (totalsRow.delivered / totalsRow.total) * 100 : 0;
+
+    return {
+      dailyByChannel: dailyByChannel.map((row) => ({
+        day: row._id.day,
+        channel: row._id.channel,
+        count: row.count,
+      })),
+      spendByChannel: spendByChannel.map((row) => ({
+        channel: row._id as Channel,
+        costPaise: row.costPaise,
+      })),
+      messagesInRange: totalsRow.total,
+      days,
+      deliveryRate,
+      recent,
+      statusBreakdown: statusBreakdown.map((row) => ({
+        status: row._id as MessageStatus,
+        count: row.count as number,
+      })),
+    };
+  }
+
+  // Cross-tenant variants of list()/summary() for the admin global messaging
+  // dashboard — same shape, just without a userId match, since admin needs
+  // to see every tenant's messages, not one applicant's. Kept as separate
+  // methods rather than making userId optional on the originals so the
+  // tenant-scoped contract of list()/summary() stays unambiguous at every
+  // call site.
+  async listAll(channel?: Channel, page = 1, limit = 20) {
+    const filter = channel ? { channel } : {};
+    const [items, total] = await Promise.all([
+      this.model
+        .aggregate([
+          { $match: filter },
+          { $sort: { createdAt: -1 } },
+          { $skip: (page - 1) * limit },
+          { $limit: limit },
+          // Message.userId is a plain string (not an ObjectId ref), so the
+          // lookup against `users` needs an explicit cast first.
+          { $addFields: { userObjectId: { $toObjectId: '$userId' } } },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'userObjectId',
+              foreignField: '_id',
+              as: 'user',
+            },
+          },
+          {
+            $addFields: {
+              tenantLabel: {
+                $let: {
+                  vars: { u: { $arrayElemAt: ['$user', 0] } },
+                  in: {
+                    $ifNull: [
+                      '$$u.companyName',
+                      {
+                        $ifNull: [
+                          '$$u.name',
+                          { $ifNull: ['$$u.phoneNumber', { $ifNull: ['$$u.email', '$userId'] }] },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          { $project: { user: 0, userObjectId: 0 } },
+        ])
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+    return { items, total, page, limit };
+  }
+
+  async summaryAll(channel?: Channel, days = 14) {
+    const since = new Date();
+    since.setDate(since.getDate() - (days - 1));
+    since.setHours(0, 0, 0, 0);
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const channelFilter = channel ? { channel } : {};
+
+    const [dailyByChannel, spendByChannel, totals, recent, statusBreakdown] = await Promise.all([
+      this.model.aggregate([
+        { $match: { createdAt: { $gte: since }, ...channelFilter } },
+        {
+          $group: {
+            _id: {
+              day: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              channel: '$channel',
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      this.model.aggregate([
+        { $match: { createdAt: { $gte: monthStart }, ...channelFilter } },
+        { $group: { _id: '$channel', costPaise: { $sum: '$costPaise' } } },
+      ]),
+      this.model.aggregate([
+        { $match: { createdAt: { $gte: since }, ...channelFilter } },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            delivered: {
+              $sum: { $cond: [{ $in: ['$status', ['sent', 'delivered']] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+      this.model
+        .find({ ...channelFilter })
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .exec(),
+      this.model.aggregate([
+        { $match: { createdAt: { $gte: since }, ...channelFilter } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
     ]);

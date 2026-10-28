@@ -16,8 +16,9 @@ import {
 import { UpdateAiConfigDto } from './dto/update-ai-config.dto';
 import { CreateDataSourceDto } from './dto/create-data-source.dto';
 import { CHANNELS, type Channel } from '../templates/schemas/template.schema';
+import { stripHtml } from '../common/strip-html.util';
 
-const SIMULATED_INGEST_MS = 4000;
+const MAX_DATA_SOURCE_CONTENT_CHARS = 50_000;
 
 // Never echo a saved key back to the client — show only enough to recognize
 // it (e.g. "•••• 7f3a"), the same way every real key-management UI does.
@@ -121,6 +122,8 @@ export class AiService {
   }
 
   async addDataSource(userId: string, dto: CreateDataSourceDto) {
+    const content = await this.resolveDataSourceContent(dto);
+
     const config = await this.model
       .findOneAndUpdate(
         { userId },
@@ -129,7 +132,8 @@ export class AiService {
             dataSources: {
               name: dto.name,
               type: dto.type,
-              status: 'processing',
+              content,
+              status: 'ready',
             },
           },
         },
@@ -137,20 +141,34 @@ export class AiService {
       )
       .exec();
 
-    const added = config.dataSources[config.dataSources.length - 1];
-
-    // Simulated ingestion — no real embeddings/processing pipeline yet.
-    setTimeout(() => {
-      this.model
-        .updateOne(
-          { userId, 'dataSources._id': added._id },
-          { $set: { 'dataSources.$.status': 'ready' } },
-        )
-        .exec()
-        .catch(() => {});
-    }, SIMULATED_INGEST_MS);
-
     return toClientConfig(config);
+  }
+
+  // type 'text' is stored as given; type 'url' is fetched and HTML-stripped
+  // here, server-side, rather than trusting the client to paste plain text
+  // (and so a URL can be re-fetched/refreshed later without a new upload).
+  private async resolveDataSourceContent(dto: CreateDataSourceDto): Promise<string> {
+    if (dto.type === 'text') {
+      return dto.content.slice(0, MAX_DATA_SOURCE_CONTENT_CHARS);
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(dto.content);
+    } catch (err) {
+      throw new BadRequestException(
+        `Could not fetch that URL: ${err instanceof Error ? err.message : 'unknown error'}`,
+      );
+    }
+    if (!res.ok) {
+      throw new BadRequestException(`That URL returned ${res.status} — check it's publicly reachable.`);
+    }
+    const html = await res.text();
+    const text = stripHtml(html);
+    if (!text) {
+      throw new BadRequestException('Fetched that URL but found no readable text content.');
+    }
+    return text.slice(0, MAX_DATA_SOURCE_CONTENT_CHARS);
   }
 
   async removeDataSource(userId: string, dataSourceId: string) {

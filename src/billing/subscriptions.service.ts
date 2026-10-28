@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Subscription, SubscriptionDocument, SubscriptionStatus } from './schemas/subscription.schema';
@@ -26,7 +27,15 @@ export class SubscriptionsService {
     private readonly paymentEventModel: Model<PaymentEventDocument>,
     private readonly plansService: PlansService,
     private readonly razorpayService: RazorpayService,
+    private readonly config: ConfigService,
   ) {}
+
+  isDevBypassEnabled(): boolean {
+    return (
+      this.config.get<string>('NODE_ENV') !== 'production' &&
+      this.config.get<string>('DEV_PHONE_AUTH_BYPASS') === 'true'
+    );
+  }
 
   // The current user's active-ish subscription (anything not
   // cancelled/expired/completed) — a user has at most one at a time, this
@@ -108,6 +117,35 @@ export class SubscriptionsService {
     return subscription;
   }
 
+  // Dev-only: flips the caller's pending subscription to 'active' without a
+  // real webhook delivery. Razorpay's webhook needs a publicly reachable
+  // HTTPS URL, which a local dev backend doesn't have — checkout still runs
+  // for real against Razorpay's TEST keys, this just substitutes for the
+  // confirmation step that would otherwise never arrive locally. Hard
+  // disabled unless NODE_ENV !== 'production' AND DEV_PHONE_AUTH_BYPASS=true,
+  // same gate as every other dev shortcut in this codebase.
+  async devConfirmSubscription(userId: string) {
+    if (!this.isDevBypassEnabled()) {
+      throw new ForbiddenException('Dev subscription bypass is disabled');
+    }
+
+    const subscription = await this.findActiveForUser(userId);
+    if (!subscription) throw new NotFoundException('No pending subscription found');
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    subscription.status = 'active';
+    subscription.currentPeriodStart = now;
+    subscription.currentPeriodEnd = periodEnd;
+    subscription.messagesUsedThisPeriod = { whatsapp: 0, email: 0, sms: 0, ai: 0 };
+    await subscription.save();
+
+    const plan = await this.plansService.findById(subscription.planId);
+    return { subscription, plan };
+  }
+
   // Called by BillingController's /billing/webhook route after the raw-body
   // HMAC signature has already been verified. `eventId` is the
   // X-Razorpay-Event-Id header value — Razorpay's documented idempotency
@@ -159,7 +197,7 @@ export class SubscriptionsService {
     // A fresh charge means a new billing cycle started — reset usage so
     // the plan allowance is available again for the new period.
     if (eventType === 'subscription.charged') {
-      subscription.messagesUsedThisPeriod = { whatsapp: 0, email: 0, sms: 0 };
+      subscription.messagesUsedThisPeriod = { whatsapp: 0, email: 0, sms: 0, ai: 0 };
     }
 
     await subscription.save();
