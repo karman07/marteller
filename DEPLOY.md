@@ -46,7 +46,7 @@ Public hosts (nginx): `marteller-{backend,user,admin,sales,mail}.karmansingharor
    then `pm2 restart marteller-backend marteller-smtp-submission marteller-mail-inbound`
    and confirm the log shows `Mail provider: Resend`.
    Resend webhook URL: `https://marteller-backend.karmansingharora.com/mail/webhooks/resend`
-   (events: delivered, bounced, complained, delivery_delayed, opened, clicked). Without `MAIL_PROVIDER=resend`
+   (events: delivered, bounced, complained, delivery_delayed, opened, clicked). Without `RESEND_API_KEY`
    mail keeps using the local Postfix relay.
 
 ## Verify
