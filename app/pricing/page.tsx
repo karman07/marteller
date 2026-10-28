@@ -68,7 +68,7 @@ export default function PricingPage() {
 
   return (
     <>
-      <div className="border-b border-line px-8 py-6">
+      <div className="border-b border-line px-4 sm:px-8 py-6">
         <h1 className="text-xl font-semibold tracking-tight text-ink">Pricing</h1>
         <p className="mt-1 text-sm text-ink-soft">
           What a message actually costs against a customer&apos;s wallet, per channel — separate from a plan&apos;s
@@ -77,9 +77,9 @@ export default function PricingPage() {
         </p>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {!loaded || !rateCard ? (
-          <p className="text-sm text-ink-muted">Loading…</p>
+          <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
         ) : (
           <div className="max-w-2xl rounded-2xl border border-line bg-surface-2 p-5">
             {error && <p className="mb-3 rounded-lg bg-accent-soft/60 px-3 py-2 text-sm text-accent">{error}</p>}

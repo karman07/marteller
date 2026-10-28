@@ -222,6 +222,68 @@ export function removeSmsCredential(userId: string) {
   });
 }
 
+export type WhatsAppCredential = {
+  _id: string;
+  userId: string;
+  phoneNumberId: string;
+  apiKey: string;
+  wabaId?: string;
+  configuredByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// WhatsApp provider config for this applicant — staff-provisioned (see the
+// backend's WhatsAppCredential schema comment), same read/write pair for
+// both sales and admin.
+export function fetchWhatsAppCredential(userId: string) {
+  return request<WhatsAppCredential | null>(`/admin/applicants/${userId}/whatsapp-credential`);
+}
+
+export function setWhatsAppCredential(
+  userId: string,
+  payload: { phoneNumberId: string; apiKey: string; wabaId?: string },
+) {
+  return request<WhatsAppCredential>(`/admin/applicants/${userId}/whatsapp-credential`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function removeWhatsAppCredential(userId: string) {
+  return request<{ deleted: boolean }>(`/admin/applicants/${userId}/whatsapp-credential`, {
+    method: "DELETE",
+  });
+}
+
+export type WhatsappTemplateApproval = {
+  userId: string;
+  tenantName: string;
+  templateId: string;
+  templateName: string;
+  templateBody: string;
+  autoSubmitted: boolean;
+  submittedAt: string;
+};
+
+// The queue of WhatsApp templates (across every tenant) waiting on the one
+// manual registration step our provider requires — staff-handled, never
+// seen by the tenant (see the backend WhatsAppTemplateMapping comment).
+export function fetchWhatsappTemplateApprovals() {
+  return request<WhatsappTemplateApproval[]>("/admin/whatsapp-template-approvals");
+}
+
+export function reviewWhatsappTemplateApproval(
+  userId: string,
+  templateId: string,
+  payload: { status: "approved" | "rejected"; providerMessageId?: string; rejectionReason?: string },
+) {
+  return request<{ status: string }>(`/admin/whatsapp-template-approvals/${userId}/${templateId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type ActivityEvent = {
   app: "frontend" | "sales" | "admin";
   type: "page_view" | "click" | "feature_interest" | "funnel_step" | "custom";

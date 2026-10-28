@@ -121,7 +121,7 @@ export default function TeamPage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-8 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-4 sm:px-8 py-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">Sales team</h1>
           <p className="mt-1 text-sm text-ink-soft">Sales reps who can work and reassign leads.</p>
@@ -131,9 +131,9 @@ export default function TeamPage() {
         </Button>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {!loaded ? (
-          <p className="text-sm text-ink-muted">Loading…</p>
+          <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
         ) : team.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-6 py-14 text-center text-sm text-ink-muted">
             No sales reps yet — add one to start assigning leads.

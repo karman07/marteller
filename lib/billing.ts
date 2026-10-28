@@ -1,6 +1,6 @@
 import { request } from "./http";
 
-export type MessageLimits = { whatsapp: number; email: number; sms: number };
+export type MessageLimits = { whatsapp: number; email: number; sms: number; ai: number };
 
 export type Plan = {
   _id: string;
@@ -31,6 +31,35 @@ export type CreatePlanPayload = {
 };
 
 export type UpdatePlanPayload = Partial<CreatePlanPayload>;
+
+export type SubscriptionStatus =
+  | "created"
+  | "authenticated"
+  | "active"
+  | "pending"
+  | "halted"
+  | "cancelled"
+  | "completed"
+  | "expired";
+
+export type Subscription = {
+  _id: string;
+  planId: string;
+  razorpaySubscriptionId: string;
+  status: SubscriptionStatus;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  messagesUsedThisPeriod: MessageLimits;
+  cancelAtPeriodEnd: boolean;
+};
+
+// This applicant's plan + usage this period — null if they're on pure
+// pay-as-you-go wallet billing with no active plan.
+export function fetchApplicantSubscription(userId: string) {
+  return request<{ subscription: Subscription; plan: Plan } | null>(
+    `/admin/applicants/${userId}/subscription`,
+  );
+}
 
 export function listAllPlans() {
   return request<Plan[]>("/admin/plans");

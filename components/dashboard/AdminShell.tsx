@@ -8,7 +8,10 @@ import {
   CreditCard,
   IndianRupee,
   LayoutDashboard,
+  LayoutTemplate,
   LogOut,
+  MessageSquare,
+  ShieldCheck,
   Tag,
   UserCog,
   Users,
@@ -28,6 +31,14 @@ const NAV_GROUPS = [
       { href: "/applicants", label: "Pipeline", icon: Users },
       { href: "/team", label: "Sales team", icon: UserCog },
       { href: "/sales-activity", label: "Sales activity", icon: Activity },
+    ],
+  },
+  {
+    label: "Messaging",
+    items: [
+      { href: "/messaging/whatsapp", label: "Overview", icon: MessageSquare },
+      { href: "/messaging/whatsapp/templates", label: "Templates", icon: LayoutTemplate },
+      { href: "/whatsapp-template-approvals", label: "Template approvals", icon: ShieldCheck },
     ],
   },
   {

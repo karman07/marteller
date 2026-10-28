@@ -9,11 +9,13 @@ import {
   Check,
   Clock,
   FileText,
+  Inbox as InboxIcon,
   KeyRound,
   Loader2,
   MessageSquare,
   MousePointerClick,
   Plus,
+  Send as SendIcon,
   Smartphone,
   Trash2,
   Upload,
@@ -35,25 +37,35 @@ import {
   fetchApplicantEvents,
   fetchSmsCredential,
   fetchUsage,
+  fetchWhatsAppCredential,
   listDocumentRequests,
   listFormFields,
   removeSmsCredential,
+  removeWhatsAppCredential,
   reviewVerification,
   SalesStage,
   SALES_STAGES,
   setSmsCredential,
+  setWhatsAppCredential,
   SmsCredential,
   SmsRoute,
   submitVerificationOnBehalf,
   updateStage,
+  WhatsAppCredential,
   UsageSummary,
   VerificationFormField,
 } from "@/lib/admin";
 import { openAuthedFile } from "@/lib/http";
 import { formatINR } from "@/lib/currency";
+import { CHANNELS, Channel, channelLabel } from "@/lib/channels";
 import { VerificationBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { ChannelIcon } from "@/components/dashboard/ChannelIcon";
+import { ApplicantLimitsBars } from "@/components/dashboard/ApplicantLimitsBars";
+import { ChannelLogsView } from "@/components/dashboard/channel/ChannelLogsView";
+import { ChannelInboxView } from "@/components/dashboard/channel/ChannelInboxView";
+import { ChannelSendView } from "@/components/dashboard/channel/ChannelSendView";
 
 function formatDate(iso?: string | null) {
   if (!iso) return "—";
@@ -65,6 +77,14 @@ function formatBytes(n: number) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+type MessagingSubTab = "logs" | "inbox" | "send";
+
+const MESSAGING_SUB_TABS: { value: MessagingSubTab; label: string; icon: typeof SendIcon }[] = [
+  { value: "logs", label: "Logs", icon: BarChart3 },
+  { value: "inbox", label: "Inbox", icon: InboxIcon },
+  { value: "send", label: "Send", icon: SendIcon },
+];
 
 export default function ApplicantDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -96,6 +116,9 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   const [balanceAmount, setBalanceAmount] = useState("500");
   const [addingBalance, setAddingBalance] = useState(false);
   const [addBalanceError, setAddBalanceError] = useState<string | null>(null);
+
+  const [messagingChannel, setMessagingChannel] = useState<Channel>("whatsapp");
+  const [messagingSubTab, setMessagingSubTab] = useState<MessagingSubTab>("logs");
 
   function load() {
     fetchApplicant(id)
@@ -224,7 +247,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
   }
 
   if (!detail) {
-    return <div className="px-8 py-6 text-sm text-ink-muted">Loading…</div>;
+    return <div className="px-4 sm:px-8 py-6 text-sm text-ink-muted">Loading…</div>;
   }
 
   const { user, verification } = detail;
@@ -232,7 +255,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <>
-      <div className="border-b border-line px-8 py-6">
+      <div className="border-b border-line px-4 sm:px-8 py-6">
         <Link href="/applicants" className="mb-2 inline-flex items-center gap-1.5 text-xs text-ink-muted hover:text-accent">
           <ArrowLeft size={12} /> Back to applicants
         </Link>
@@ -252,7 +275,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <div className="grid gap-6 px-8 py-6 lg:grid-cols-2">
+      <div className="grid gap-6 px-4 sm:px-8 py-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <section className="rounded-2xl border border-line bg-surface-2 p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink">Profile</h2>
@@ -286,7 +309,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
               <dd className="text-ink">{user.interests.length > 0 ? user.interests.join(", ") : "—"}</dd>
               <dt className="text-ink-muted">Onboarding</dt>
               <dd className="text-ink">{user.onboarded ? "Complete" : "Incomplete"}</dd>
-              <dt className="text-ink-muted">Wallet balance</dt>
+              <dt className="text-ink-muted">Credits</dt>
               <dd className="text-ink">{formatINR(user.walletBalancePaise)}</dd>
               <dt className="text-ink-muted">Signed up</dt>
               <dd className="text-ink">{formatDate(user.createdAt)}</dd>
@@ -303,18 +326,19 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
                 onClick={() => setAddBalanceOpen(true)}
                 className="flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
               >
-                <Wallet size={12} /> Add balance
+                <Wallet size={12} /> Add credits
               </button>
             </div>
             {!usage ? (
-              <p className="text-sm text-ink-muted">Loading…</p>
+              <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
             ) : (
               <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-3 gap-2">
                   <UsageTile icon={MessageSquare} label="Messages sent" value={String(usage.totalMessages)} />
-                  <UsageTile icon={Wallet} label="Wallet" value={formatINR(usage.walletBalancePaise)} />
+                  <UsageTile icon={Wallet} label="Credits" value={formatINR(usage.walletBalancePaise)} />
                   <UsageTile icon={Users} label="Leads" value={String(usage.leadsCount)} />
                 </div>
+                <ApplicantLimitsBars userId={id} />
                 {usage.byChannel.length > 0 && (
                   <div>
                     <p className="mb-1.5 text-xs font-medium text-ink-muted">By channel</p>
@@ -433,6 +457,8 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
               </Button>
             </div>
           </section>
+
+          <WhatsAppCredentialPanel userId={id} />
 
           <SmsCredentialPanel userId={id} />
 
@@ -596,7 +622,57 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
         </section>
       </div>
 
-      <Modal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} title="Add balance">
+      <div className="px-4 sm:px-8 pb-6">
+        <section className="rounded-2xl border border-line bg-surface-2 p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={15} className="text-accent" />
+              <h2 className="text-sm font-semibold text-ink">Messaging</h2>
+            </div>
+            <div className="flex gap-1.5">
+              {CHANNELS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setMessagingChannel(c)}
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    messagingChannel === c
+                      ? "border-accent bg-accent-soft/40 text-accent"
+                      : "border-line text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  <ChannelIcon channel={c} size={13} />
+                  {channelLabel(c)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-4 flex gap-1.5 border-b border-line">
+            {MESSAGING_SUB_TABS.map((t) => {
+              const Icon = t.icon;
+              const active = messagingSubTab === t.value;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setMessagingSubTab(t.value)}
+                  className={`flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active ? "border-b-2 border-accent text-accent" : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  <Icon size={14} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {messagingSubTab === "logs" && <ChannelLogsView channel={messagingChannel} userId={id} />}
+          {messagingSubTab === "inbox" && <ChannelInboxView channel={messagingChannel} userId={id} />}
+          {messagingSubTab === "send" && <ChannelSendView channel={messagingChannel} userId={id} />}
+        </section>
+      </div>
+
+      <Modal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} title="Add credits">
         <div className="flex flex-col gap-3">
           <p className="text-xs text-ink-muted">
             Credited immediately — shows up in their transaction history as added by admin.
@@ -628,7 +704,7 @@ export default function ApplicantDetailPage({ params }: { params: Promise<{ id: 
             className="h-11 w-full rounded-xl border border-line bg-cream px-3 text-sm text-ink outline-none focus:border-accent"
           />
           <Button onClick={handleAddBalance} disabled={addingBalance} className="w-full">
-            {addingBalance ? "Adding…" : "Add balance"}
+            {addingBalance ? "Adding…" : "Add credits"}
           </Button>
         </div>
       </Modal>
@@ -643,6 +719,141 @@ function UsageTile({ icon: Icon, label, value }: { icon: typeof MessageSquare; l
       <p className="text-sm font-semibold text-ink">{value}</p>
       <p className="text-[11px] text-ink-muted">{label}</p>
     </div>
+  );
+}
+
+// WhatsApp provider config — staff-provisioned, not something the
+// customer sets up themselves (see the backend WhatsAppCredential schema
+// comment). Self-contained: loads/saves independently of the rest of the
+// page's state. Mirrors SmsCredentialPanel below.
+function WhatsAppCredentialPanel({ userId }: { userId: string }) {
+  const [credential, setCredential] = useState<WhatsAppCredential | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [wabaId, setWabaId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    fetchWhatsAppCredential(userId)
+      .then((c) => {
+        setCredential(c);
+        setPhoneNumberId(c?.phoneNumberId ?? "");
+        setApiKey(c?.apiKey ?? "");
+        setWabaId(c?.wabaId ?? "");
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  async function handleSave() {
+    if (!phoneNumberId.trim() || !apiKey.trim()) {
+      setError("Phone number ID and API key are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await setWhatsAppCredential(userId, {
+        phoneNumberId: phoneNumberId.trim(),
+        apiKey: apiKey.trim(),
+        wabaId: wabaId.trim() || undefined,
+      });
+      setCredential(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save WhatsApp config.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemove() {
+    if (!confirm("Remove this account's WhatsApp configuration? They won't be able to send WhatsApp messages until it's set up again.")) return;
+    setRemoving(true);
+    try {
+      await removeWhatsAppCredential(userId);
+      setCredential(null);
+      setPhoneNumberId("");
+      setApiKey("");
+      setWabaId("");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface-2 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <MessageSquare size={15} className="text-accent" />
+          <h2 className="text-sm font-semibold text-ink">WhatsApp provider</h2>
+        </div>
+        {loaded && (
+          <span
+            className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+              credential ? "bg-emerald-500/15 text-emerald-600" : "bg-cream-secondary text-ink-muted"
+            }`}
+          >
+            {credential ? "Configured" : "Not configured"}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-xs text-ink-muted">
+        Staff-configured, not self-service — set this account&apos;s WhatsApp phone number ID
+        and API key (a separate key from the SMS one above). The business account ID also lets the
+        system auto-submit and track this account&apos;s template approvals — leave it blank to fall
+        back to the manual approvals queue.
+      </p>
+      {error && <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-accent">{error}</p>}
+      {!loaded ? (
+        <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            value={phoneNumberId}
+            onChange={(e) => setPhoneNumberId(e.target.value)}
+            placeholder="Phone number ID"
+            className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <input
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            type="password"
+            placeholder="WhatsApp API key"
+            className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <input
+            value={wabaId}
+            onChange={(e) => setWabaId(e.target.value)}
+            placeholder="Business account ID (optional — enables auto-approval)"
+            className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
+          />
+          <div className="flex items-center gap-2">
+            <Button onClick={handleSave} disabled={saving} variant="outline" className="flex-1 gap-1.5">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
+              {credential ? "Update" : "Save"}
+            </Button>
+            {credential && (
+              <button
+                onClick={handleRemove}
+                disabled={removing}
+                aria-label="Remove WhatsApp configuration"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:border-accent hover:text-accent"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -717,7 +928,7 @@ function SmsCredentialPanel({ userId }: { userId: string }) {
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Smartphone size={15} className="text-accent" />
-          <h2 className="text-sm font-semibold text-ink">SMS provider (Fast2SMS)</h2>
+          <h2 className="text-sm font-semibold text-ink">SMS provider</h2>
         </div>
         {loaded && (
           <span
@@ -730,18 +941,18 @@ function SmsCredentialPanel({ userId }: { userId: string }) {
         )}
       </div>
       <p className="mb-3 text-xs text-ink-muted">
-        Staff-configured, not self-service — set this account&apos;s Fast2SMS API key so their SMS sends go out
+        Staff-configured, not self-service — set this account&apos;s API key so their SMS sends go out
         under their own provider account.
       </p>
       {error && <p className="mb-2 rounded-lg bg-accent-soft/60 px-3 py-2 text-xs text-accent">{error}</p>}
       {!loaded ? (
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
       ) : (
         <div className="flex flex-col gap-2">
           <input
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Fast2SMS API key"
+            placeholder="SMS API key"
             className="h-10 w-full rounded-lg border border-line bg-cream px-2.5 text-sm text-ink outline-none focus:border-accent"
           />
           <div className="grid grid-cols-2 gap-2">
@@ -814,7 +1025,7 @@ function ActivityPanel({ timeline }: { timeline: ApplicantTimeline | null }) {
         <h2 className="text-sm font-semibold text-ink">Activity</h2>
       </div>
       {!timeline ? (
-        <p className="text-sm text-ink-muted">Loading…</p>
+        <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-1.5">

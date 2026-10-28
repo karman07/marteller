@@ -278,7 +278,7 @@ export default function PipelinePage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-8 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-4 sm:px-8 py-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">Pipeline</h1>
           <p className="mt-1 text-sm text-ink-soft">
@@ -316,7 +316,7 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />

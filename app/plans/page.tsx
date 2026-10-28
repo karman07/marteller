@@ -21,7 +21,7 @@ const EMPTY_FORM: CreatePlanPayload = {
   description: "",
   priceMonthlyPaise: 0,
   currency: "INR",
-  messageLimits: { whatsapp: 0, email: 0, sms: 0 },
+  messageLimits: { whatsapp: 0, email: 0, sms: 0, ai: 0 },
   features: [],
   isActive: true,
   sortOrder: 0,
@@ -64,7 +64,10 @@ export default function PlansPage() {
       description: plan.description ?? "",
       priceMonthlyPaise: plan.priceMonthlyPaise,
       currency: plan.currency,
-      messageLimits: { ...plan.messageLimits },
+      // Defensive default — plans created before the AI dimension existed
+      // won't have this key at all, and an uncontrolled -> controlled
+      // input transition logs a React warning if left undefined.
+      messageLimits: { ...plan.messageLimits, ai: plan.messageLimits.ai ?? 0 },
       features: plan.features,
       isActive: plan.isActive,
       sortOrder: plan.sortOrder,
@@ -122,7 +125,7 @@ export default function PlansPage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-8 py-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-line px-4 sm:px-8 py-6">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-ink">Plans</h1>
           <p className="mt-1 text-sm text-ink-soft">Subscription tiers customers can buy via Razorpay.</p>
@@ -132,9 +135,9 @@ export default function PlansPage() {
         </Button>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {!loaded ? (
-          <p className="text-sm text-ink-muted">Loading…</p>
+          <p className="flex items-center gap-2 text-sm text-ink-muted"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-muted/25 border-t-ink-muted" />Loading…</p>
         ) : plans.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-6 py-14 text-center text-sm text-ink-muted">
             No plans yet — create one to start selling subscriptions.
@@ -164,6 +167,7 @@ export default function PlansPage() {
                   <span>{plan.messageLimits.whatsapp} WhatsApp</span>
                   <span>{plan.messageLimits.email} Email</span>
                   <span>{plan.messageLimits.sms} SMS</span>
+                  <span>{plan.messageLimits.ai ?? 0} AI generations</span>
                 </div>
                 {plan.features.length > 0 && (
                   <ul className="mt-3 flex flex-col gap-1 text-xs text-ink-muted">
@@ -231,10 +235,10 @@ export default function PlansPage() {
           </div>
 
           <p className="mt-1 text-xs font-semibold text-ink-soft">Monthly message allowance</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {(["whatsapp", "email", "sms"] as const).map((channel) => (
+          <div className="grid gap-3 sm:grid-cols-4">
+            {(["whatsapp", "email", "sms", "ai"] as const).map((channel) => (
               <label key={channel} className="flex flex-col gap-1 text-xs font-medium text-ink-soft capitalize">
-                {channel}
+                {channel === "ai" ? "AI generations" : channel}
                 <input
                   type="number"
                   min={0}
