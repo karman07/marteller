@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export type ResendDnsRecord = {
@@ -27,13 +27,31 @@ export class ResendPermanentError extends Error {}
 // handful of endpoints). Active when MAIL_PROVIDER=resend; see
 // MailTransportService and MailDomainsService for the call sites.
 @Injectable()
-export class ResendService {
+export class ResendService implements OnModuleInit {
   private readonly logger = new Logger(ResendService.name);
 
   constructor(private readonly config: ConfigService) {}
 
+  // Resend is used when MAIL_PROVIDER=resend, or when MAIL_PROVIDER is unset
+  // and RESEND_API_KEY exists. Set MAIL_PROVIDER=smtp to force the SMTP relay.
   isEnabled(): boolean {
-    return this.config.get<string>('MAIL_PROVIDER') === 'resend';
+    const provider = this.config.get<string>('MAIL_PROVIDER');
+    if (provider) return provider === 'resend';
+    return !!this.config.get<string>('RESEND_API_KEY');
+  }
+
+  onModuleInit() {
+    if (!this.isEnabled()) {
+      this.logger.warn(
+        'Mail provider: SMTP relay (Resend not configured — set RESEND_API_KEY to use Resend)',
+      );
+    } else if (!this.config.get<string>('RESEND_API_KEY')) {
+      this.logger.error(
+        'MAIL_PROVIDER=resend but RESEND_API_KEY is missing — every send will fail',
+      );
+    } else {
+      this.logger.log('Mail provider: Resend');
+    }
   }
 
   private apiKey(): string {
