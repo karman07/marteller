@@ -25,12 +25,12 @@ export default function OverviewPage() {
 
   return (
     <>
-      <div className="border-b border-line px-8 py-6">
+      <div className="border-b border-line px-4 sm:px-8 py-6">
         <h1 className="text-xl font-semibold tracking-tight text-ink">Overview</h1>
         <p className="mt-1 text-sm text-ink-soft">Signups, verification, and pipeline at a glance.</p>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {stats?.isDummyData && (
           <div className="mb-4 flex items-center gap-1.5 rounded-lg bg-cream-secondary px-3 py-2 text-xs font-medium text-ink-muted">
             <FlaskConical size={12} /> Sample data — dev preview only

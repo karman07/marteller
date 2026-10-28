@@ -46,7 +46,7 @@ export function Modal({
         aria-hidden
       />
       <div
-        className={`relative max-h-[90vh] w-full ${SIZES[size]} overflow-y-auto rounded-2xl border border-line bg-surface-2 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)]`}
+        className={`relative max-h-[90vh] w-full ${SIZES[size]} overflow-y-auto rounded-2xl border border-line bg-surface-2 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.25)] animate-fade-up`}
       >
         {dismissable && (
           <button

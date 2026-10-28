@@ -17,6 +17,13 @@
 
   --border: #d5cec2;
 
+  /* Dashboard chart series (dataviz-skill validated categorical palette,
+     first/third/eighth slots — skips the orange slot, which would collide
+     with --accent above) */
+  --series-whatsapp: #2a78d6;
+  --series-email: #1baf7a;
+  --series-sms: #e34948;
+
   color-scheme: light;
 }
 
@@ -34,6 +41,10 @@
   --accent-soft: #3a2418;
 
   --border: #39332e;
+
+  --series-whatsapp: #3987e5;
+  --series-email: #199e70;
+  --series-sms: #e66767;
 
   color-scheme: dark;
 }
@@ -53,16 +64,39 @@
   --color-line: var(--border);
 
   --font-sans: var(--font-geist-sans);
+
+  --animate-fade-up: fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 * {
   border-color: var(--border);
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background: var(--background);
   color: var(--text-primary);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
 }
 
 @layer base {

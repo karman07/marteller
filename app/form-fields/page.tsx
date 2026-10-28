@@ -94,7 +94,7 @@ export default function FormFieldsPage() {
 
   return (
     <>
-      <div className="border-b border-line px-8 py-6">
+      <div className="border-b border-line px-4 sm:px-8 py-6">
         <h1 className="text-xl font-semibold tracking-tight text-ink">Verification form</h1>
         <p className="mt-1 text-sm text-ink-soft">
           What customers fill in to get verified — add, edit, reorder, or remove fields. Changes apply
@@ -102,7 +102,7 @@ export default function FormFieldsPage() {
         </p>
       </div>
 
-      <div className="px-8 py-6">
+      <div className="px-4 sm:px-8 py-6">
         {!loaded ? null : (
           <div className="flex flex-col gap-2">
             {fields.map((field, i) => (

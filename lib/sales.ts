@@ -116,6 +116,47 @@ export type UsageSummary = {
   leadsCount: number;
 };
 
+export type MessageLimits = { whatsapp: number; email: number; sms: number; ai: number };
+
+export type SubscriptionStatus =
+  | "created"
+  | "authenticated"
+  | "active"
+  | "pending"
+  | "halted"
+  | "cancelled"
+  | "completed"
+  | "expired";
+
+export type Subscription = {
+  _id: string;
+  planId: string;
+  razorpaySubscriptionId: string;
+  status: SubscriptionStatus;
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  messagesUsedThisPeriod: MessageLimits;
+  cancelAtPeriodEnd: boolean;
+};
+
+export type Plan = {
+  _id: string;
+  name: string;
+  slug: string;
+  priceMonthlyPaise: number;
+  currency: string;
+  messageLimits: MessageLimits;
+};
+
+// This applicant's plan + usage this period — null if they're on pure
+// pay-as-you-go wallet billing with no active plan. Read-only for sales
+// (plan management is admin-only); same endpoint shape as AdminController's.
+export function fetchApplicantSubscription(userId: string) {
+  return request<{ subscription: Subscription; plan: Plan } | null>(
+    `/sales/applicants/${userId}/subscription`,
+  );
+}
+
 export type SalesStats = {
   totalSignups: number;
   byVerification: Record<VerificationStatus, number>;
@@ -207,6 +248,68 @@ export function setSmsCredential(
 export function removeSmsCredential(userId: string) {
   return request<{ deleted: boolean }>(`/sales/applicants/${userId}/sms-credential`, {
     method: "DELETE",
+  });
+}
+
+export type WhatsAppCredential = {
+  _id: string;
+  userId: string;
+  phoneNumberId: string;
+  apiKey: string;
+  wabaId?: string;
+  configuredByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// WhatsApp provider config for this applicant — staff-provisioned (see the
+// backend's WhatsAppCredential schema comment), same read/write pair for
+// both sales and admin.
+export function fetchWhatsAppCredential(userId: string) {
+  return request<WhatsAppCredential | null>(`/sales/applicants/${userId}/whatsapp-credential`);
+}
+
+export function setWhatsAppCredential(
+  userId: string,
+  payload: { phoneNumberId: string; apiKey: string; wabaId?: string },
+) {
+  return request<WhatsAppCredential>(`/sales/applicants/${userId}/whatsapp-credential`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function removeWhatsAppCredential(userId: string) {
+  return request<{ deleted: boolean }>(`/sales/applicants/${userId}/whatsapp-credential`, {
+    method: "DELETE",
+  });
+}
+
+export type WhatsappTemplateApproval = {
+  userId: string;
+  tenantName: string;
+  templateId: string;
+  templateName: string;
+  templateBody: string;
+  autoSubmitted: boolean;
+  submittedAt: string;
+};
+
+// The queue of WhatsApp templates (across every tenant) waiting on the one
+// manual registration step our provider requires — staff-handled, never
+// seen by the tenant (see the backend WhatsAppTemplateMapping comment).
+export function fetchWhatsappTemplateApprovals() {
+  return request<WhatsappTemplateApproval[]>("/sales/whatsapp-template-approvals");
+}
+
+export function reviewWhatsappTemplateApproval(
+  userId: string,
+  templateId: string,
+  payload: { status: "approved" | "rejected"; providerMessageId?: string; rejectionReason?: string },
+) {
+  return request<{ status: string }>(`/sales/whatsapp-template-approvals/${userId}/${templateId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }
 

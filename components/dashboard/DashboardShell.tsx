@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, LogOut, Users } from "lucide-react";
+import { FileText, LayoutDashboard, ListChecks, LogOut, ShieldCheck, Users } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -16,6 +16,13 @@ const NAV_GROUPS = [
   {
     label: "Pipeline",
     items: [{ href: "/applicants", label: "Pipeline", icon: Users }],
+  },
+  {
+    label: "Messaging",
+    items: [
+      { href: "/templates", label: "Templates", icon: FileText },
+      { href: "/whatsapp-template-approvals", label: "Template approvals", icon: ShieldCheck },
+    ],
   },
   {
     label: "Settings",
